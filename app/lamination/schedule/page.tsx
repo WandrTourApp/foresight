@@ -128,37 +128,8 @@ function applySavedOrder(rows: Part[], organize: Organizer, weekStartISO: string
   return rows.slice().sort((a, b) => (idx.has(a.id) ? idx.get(a.id)! : 1e9) - (idx.has(b.id) ? idx.get(b.id)! : 1e9));
 }
 
-// Demo data
-const demoParts: Part[] = Array.from({ length: 42 }).map((_, i) => {
-  const is40 = i % 7 === 0;
-  const stages: Stage[] = ["Unscheduled", "Scheduled", "In Mold", "Pulled", "Cutter", "Finished"];
-  const stage = stages[(i % stages.length) as number];
-  return {
-    id: `P-${1000 + i}`,
-    sku: `HLM-${(200 + i).toString().padStart(3, "0")}`,
-    name: i % 5 === 0 ? "Deck Liner" : i % 5 === 1 ? "Stringer Set" : i % 5 === 2 ? "Transom Core" : i % 5 === 3 ? "Hatch Cover" : "Console Shell",
-    boat: {
-      id: is40 ? "B-40-48881" : "B-26-37211",
-      label: is40 ? "48881 • 40‑ft" : "37211 • 26‑ft",
-      length: is40 ? 40 : 26,
-      colorHex: is40 ? "#0ea5e9" : "#f97316",
-      shipWeek: is40 ? "WK 42" : "WK 38",
-    },
-    lamType: (["Skin", "Core", "Infusion", "Hand Layup"] as LamType[])[i % 4],
-    gelcoat: i % 3 === 0 ? "Snow White" : i % 3 === 1 ? "Seafoam" : "Shark Grey",
-    qtyNeeded: 1 + (i % 4),
-    qtyDone: Math.min(1 + (i % 4), i % 6 === 5 ? 1 + (i % 4) : i % 4),
-    stage,
-    dueDate: iso(new Date(Date.now() + (i - 10) * 86400000)),
-    assignee: i % 4 === 0 ? "DL" : i % 4 === 1 ? "MF" : i % 4 === 2 ? "AG" : undefined,
-    notes: i % 9 === 0 ? "Hold for gel sample" : undefined,
-    vendor: i % 8 === 0 ? "Outside Vendor" : undefined,
-    history: [
-      { ts: iso(new Date(Date.now() - 86400000 * 3)), action: "Stage → Scheduled", by: "DL" },
-      { ts: iso(new Date(Date.now() - 86400000 * 2)), action: "Due date set", by: "MF" },
-    ],
-  };
-});
+// Default empty parts array - will be loaded from API
+const defaultParts: Part[] = [];
 
 // Filters & organize
 type Filters = {
@@ -347,7 +318,7 @@ function runDevTests() {
 export default function PartsPagePrototype() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [organize, setOrganize] = useState<Organizer>("Boat");
-  const [parts, setParts] = useState<Part[]>(() => applyPatches(demoParts, loadPatches()));
+  const [parts, setParts] = useState<Part[]>([]);
   const [open, setOpen] = useState<Part | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -356,7 +327,73 @@ export default function PartsPagePrototype() {
   const [stackWeeks, setStackWeeks] = useState<boolean>(false);
   const [stackCount, setStackCount] = useState<number>(3);
 
-  useEffect(() => { runDevTests(); }, []);
+  // Load parts from API on mount
+  useEffect(() => { 
+    runDevTests();
+    loadPartsFromAPI();
+  }, []);
+
+  // Load parts from API
+  const loadPartsFromAPI = async () => {
+    try {
+      const response = await fetch('/api/lamination-parts');
+      if (response.ok) {
+        const data = await response.json();
+        setParts(data.parts || []);
+      }
+    } catch (error) {
+      console.error('Failed to load parts:', error);
+    }
+  };
+
+  // Save all parts to API
+  const savePartsToAPI = async () => {
+    try {
+      const response = await fetch('/api/lamination-parts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts })
+      });
+      if (response.ok) {
+        setToast('All changes saved');
+      }
+    } catch (error) {
+      console.error('Failed to save parts:', error);
+      setToast('Failed to save');
+    }
+  };
+
+  // Add new part
+  const addNewPart = () => {
+    const newPart: Part = {
+      id: `P-${Date.now()}`,
+      sku: '',
+      name: 'New Part',
+      boat: { 
+        id: 'B-26-NEW', 
+        label: 'NEW • 26-ft', 
+        length: 26, 
+        colorHex: '#22c55e',
+        shipWeek: 'TBD'
+      },
+      lamType: 'Skin',
+      gelcoat: 'White',
+      qtyNeeded: 1,
+      qtyDone: 0,
+      stage: 'Unscheduled',
+      dueDate: iso(new Date()),
+      assignee: '',
+      notes: '',
+      history: [{
+        ts: iso(new Date()),
+        action: 'Part created',
+        by: 'User'
+      }]
+    };
+    setParts(prev => [...prev, newPart]);
+    setOpen(newPart); // Open the detail panel for editing
+    setToast('New part added - edit details');
+  };
 
   // Filter base list by general filters (not week yet)
   const filteredBase = useMemo(() => {
@@ -419,10 +456,27 @@ export default function PartsPagePrototype() {
   }
 
   // Update helper (persists)
-  const updatePart = (id: string, patch: Partial<Part>) => {
+  const updatePart = async (id: string, patch: Partial<Part>) => {
+    // Update local state immediately
     setParts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-    savePartPatch(id, patch);
-    setToast("Saved");
+    
+    // Find the updated part and save to API
+    const updatedPart = parts.find(p => p.id === id);
+    if (updatedPart) {
+      try {
+        const response = await fetch('/api/lamination-parts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...updatedPart, ...patch })
+        });
+        if (response.ok) {
+          setToast("Saved");
+        }
+      } catch (error) {
+        console.error('Failed to save part:', error);
+        setToast("Failed to save");
+      }
+    }
   };
 
   // Header week label
@@ -445,6 +499,18 @@ export default function PartsPagePrototype() {
               <span className="ml-2 text-sm text-gray-600">{currentWeekLabel}</span>
             </div>
             <div className="ml-auto flex items-center gap-3">
+              <button 
+                className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+                onClick={() => addNewPart()}
+              >
+                + Add New Part
+              </button>
+              <button 
+                className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                onClick={() => savePartsToAPI()}
+              >
+                Save All Changes
+              </button>
               <label className="inline-flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={stackWeeks} onChange={(e) => setStackWeeks(e.target.checked)} /> Stack weeks
               </label>
