@@ -714,24 +714,90 @@ export default function PartsPagePrototype() {
                           onDragEnd={() => { setDraggingId(null); setOverId(null); }}
                           className={cls("border-b hover:bg-gray-50", dragging && "opacity-60", over && "ring-2 ring-blue-300")} style={{ borderLeft: `4px solid ${p.boat.colorHex}` }}>
                           <td className="p-2 align-middle">
-                            <button className="text-left" onClick={() => setOpen(p)}>
-                              <div className="font-medium flex items-center gap-2">
-                                <span>{p.name}</span>
-                                <span className="text-gray-400">{p.sku}</span>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  className="font-medium border rounded px-2 py-1 min-w-0 flex-1" 
+                                  value={p.name} 
+                                  onChange={(e) => updatePart(p.id, { name: e.target.value })}
+                                  placeholder="Part name"
+                                />
+                                <input 
+                                  className="text-gray-600 border rounded px-2 py-1 w-20 text-sm" 
+                                  value={p.sku} 
+                                  onChange={(e) => updatePart(p.id, { sku: e.target.value })}
+                                  placeholder="SKU"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <select 
+                                  className="text-xs border rounded px-2 py-1 text-gray-600"
+                                  value={p.boat.id}
+                                  onChange={(e) => {
+                                    const isBoat40 = e.target.value.includes('40');
+                                    const newBoat = {
+                                      id: e.target.value,
+                                      label: isBoat40 ? `${e.target.value.split('-')[2]} • 40‑ft` : `${e.target.value.split('-')[2]} • 26‑ft`,
+                                      length: isBoat40 ? 40 : 26,
+                                      colorHex: isBoat40 ? "#0ea5e9" : "#f97316",
+                                      shipWeek: "TBD"
+                                    };
+                                    updatePart(p.id, { boat: newBoat });
+                                  }}
+                                >
+                                  <option value="B-26-NEW">NEW • 26‑ft</option>
+                                  <option value="B-26-37211">37211 • 26‑ft</option>
+                                  <option value="B-40-48881">48881 • 40‑ft</option>
+                                  <option value="B-26-12345">12345 • 26‑ft</option>
+                                  <option value="B-40-67890">67890 • 40‑ft</option>
+                                </select>
                                 <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: p.boat.colorHex }}>
                                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.boat.colorHex }} />
                                   {p.boat.length}‑ft
                                 </span>
+                                <button className="text-xs text-blue-600 hover:text-blue-800" onClick={() => setOpen(p)}>
+                                  Details →
+                                </button>
                               </div>
-                              <div className="text-xs text-gray-500">Boat: {p.boat.label}</div>
-                            </button>
+                            </div>
                           </td>
-                          <td className="p-2 align-middle">{p.lamType}</td>
                           <td className="p-2 align-middle">
-                            <span className="inline-flex items-center gap-2">
-                              <span className="h-4 w-4 rounded-full border" style={{ backgroundColor: p.gelcoat === 'Snow White' ? '#ffffff' : p.gelcoat === 'Seafoam' ? '#8fd3b0' : '#a1a1aa' }} />
-                              {p.gelcoat}
-                            </span>
+                            <select 
+                              className="border rounded px-2 py-1 text-sm"
+                              value={p.lamType}
+                              onChange={(e) => updatePart(p.id, { lamType: e.target.value as LamType })}
+                            >
+                              <option value="Skin">Skin</option>
+                              <option value="Core">Core</option>
+                              <option value="Infusion">Infusion</option>
+                              <option value="Hand Layup">Hand Layup</option>
+                            </select>
+                          </td>
+                          <td className="p-2 align-middle">
+                            <div className="inline-flex items-center gap-2">
+                              <span className="h-4 w-4 rounded-full border" style={{ 
+                                backgroundColor: p.gelcoat === 'Snow White' || p.gelcoat === 'White' ? '#ffffff' : 
+                                                p.gelcoat === 'Seafoam' ? '#8fd3b0' : 
+                                                p.gelcoat === 'Shark Grey' ? '#6b7280' :
+                                                p.gelcoat === 'Black' ? '#000000' :
+                                                p.gelcoat === 'Blue' ? '#3b82f6' : 
+                                                p.gelcoat === 'Red' ? '#ef4444' : '#a1a1aa' 
+                              }} />
+                              <select 
+                                className="border rounded px-2 py-1 text-sm"
+                                value={p.gelcoat}
+                                onChange={(e) => updatePart(p.id, { gelcoat: e.target.value })}
+                              >
+                                <option value="White">White</option>
+                                <option value="Snow White">Snow White</option>
+                                <option value="Black">Black</option>
+                                <option value="Blue">Blue</option>
+                                <option value="Red">Red</option>
+                                <option value="Seafoam">Seafoam</option>
+                                <option value="Shark Grey">Shark Grey</option>
+                                <option value="Custom">Custom</option>
+                              </select>
+                            </div>
                           </td>
                           <td className="p-2 align-middle">
                             <select className={cls("rounded-md px-2 py-1 border font-medium", STAGE_COLORS[p.stage], finished && "opacity-70")} value={p.stage}
