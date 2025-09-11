@@ -1,0 +1,386 @@
+import { useState, useMemo, useCallback } from 'react';
+
+// The Core Foresight App Component
+export default function App() {
+  const [selectedBoat, setSelectedBoat] = useState('26');
+  const [selectedOptions, setSelectedOptions] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isStagingComplete, setIsStagingComplete] = useState(false);
+  const [pickedStatus, setPickedStatus] = useState({});
+  const [shortageQuantity, setShortageQuantity] = useState(''); // Track actual quantity picked when shortage occurs
+
+  // Master BOM data with detailed staging instructions
+  const [masterData] = useState({
+    '26': {
+      parts: [
+        { id: '26HULL', name: '26\' Open Hull', category: 'Lamination', quantity: 1, pickLocation: 'Lamination Bay', staging: [{ location: 'Hull Assembly Bay', quantity: 1 }] },
+        { id: 'DECK', name: '26\' Deck with Seating', category: 'Lamination', quantity: 1, pickLocation: 'Lamination Bay', staging: [{ location: 'Deck Assembly Bay', quantity: 1 }] },
+        { id: 'LINER', name: '26\' Liner', category: 'Lamination', quantity: 1, pickLocation: 'Lamination Bay', staging: [{ location: 'Liner Assembly Bay', quantity: 1 }] },
+        { id: 'CUPHOLDER', name: 'Standard Cupholder', category: 'Assembly Hardware', quantity: 7, pickLocation: 'Bin C3', staging: [{ location: 'Rig Console', quantity: 4 }, { location: 'Rig Leaning Post', quantity: 2 }, { location: 'Rig Upper Station', quantity: 1 }] },
+        { id: 'CLEAT', name: 'Standard Cleat', category: 'Assembly Hardware', quantity: 4, pickLocation: 'Bin A2', staging: [{ location: 'Hull Assembly Bay', quantity: 4 }] },
+        { id: 'WIRING_HARNESS', name: '26\' Standard Wiring Harness', category: 'Rigging', quantity: 1, pickLocation: 'Bin D1', staging: [{ location: 'Rigging Shelf', quantity: 1 }] },
+        { id: 'STD_WINDSHIELD', name: 'Standard Windshield', category: 'Finishing', quantity: 1, pickLocation: 'Finishing Rack', staging: [{ location: 'Finishing Shelf C', quantity: 1 }] },
+      ],
+      options: [
+        {
+          id: 'FULL_HARDTOP',
+          name: 'Full Hardtop',
+          parts: [{ id: 'HARDTOP', name: 'Full Hardtop with Lights', quantity: 1, pickLocation: 'Hardtop Rack', staging: [{ location: 'Hardtop Assembly Bay', quantity: 1 }] }],
+          removes: ['Standard Windshield'],
+        },
+        {
+          id: 'TACKLE_CENTER',
+          name: 'Rear Bench Seat Tackle Center',
+          parts: [{ id: 'TACKLE_CENTER', name: 'Rear Tackle Center', quantity: 1, pickLocation: 'Finishing Rack', staging: [{ location: 'Finishing Shelf A', quantity: 1 }] }],
+        },
+        {
+          id: 'GARMIN_9227',
+          name: 'Garmin 9227 MFD',
+          parts: [{ id: 'GARMIN_9227', name: 'Garmin 9227 MFD', quantity: 1, pickLocation: 'Rigging Electronics Bin', staging: [{ location: 'Rigging Shelf A', quantity: 1 }] }],
+        },
+      ],
+    },
+    '40': {
+      parts: [
+        { id: '40HULL', name: '40\' HPC Hull', category: 'Lamination', quantity: 1, pickLocation: 'Lamination Bay', staging: [{ location: 'Hull Assembly Bay', quantity: 1 }] },
+        { id: '40DECK', name: '40\' Deck', category: 'Lamination', quantity: 1, pickLocation: 'Lamination Bay', staging: [{ location: 'Deck Assembly Bay', quantity: 1 }] },
+        { id: '40LINER', name: '40\' Liner', category: 'Lamination', quantity: 1, pickLocation: 'Lamination Bay', staging: [{ location: 'Liner Assembly Bay', quantity: 1 }] },
+        { id: '40CUPHOLDER', name: '40\' Cupholder', category: 'Assembly Hardware', quantity: 8, pickLocation: 'Bin C4', staging: [{ location: 'Console Shelf', quantity: 4 }, { location: 'Leaning Post Shelf', quantity: 4 }] },
+        { id: '40CLEAT', name: 'Heavy Duty Cleat', category: 'Assembly Hardware', quantity: 6, pickLocation: 'Bin A3', staging: [{ location: 'Hull Assembly Bay', quantity: 6 }] },
+        { id: '40WIRING_HARNESS', name: '40\' Standard Wiring Harness', category: 'Rigging', quantity: 1, pickLocation: 'Bin D2', staging: [{ location: 'Rigging Shelf B', quantity: 1 }] },
+        { id: '40STD_WINDSHIELD', name: '40\' Standard Windshield', category: 'Finishing', quantity: 1, pickLocation: 'Finishing Rack', staging: [{ location: 'Finishing Shelf C', quantity: 1 }] },
+      ],
+      options: [
+        {
+          id: 'DUAL_HARDTOP',
+          name: 'Dual Hardtop',
+          parts: [{ id: 'DUAL_HARDTOP', name: 'Dual Hardtop with Upper Helm', quantity: 1, pickLocation: 'Hardtop Rack', staging: [{ location: 'Hardtop Assembly Bay', quantity: 1 }] }],
+          removes: ['40\' Standard Windshield'],
+        },
+        {
+          id: 'SEAKEEPER',
+          name: 'SeaKeeper 1 Gyro Stabilizer',
+          parts: [{ id: 'SEAKEEPER_1', name: 'SeaKeeper 1', quantity: 1, pickLocation: 'Rigging Shelf', staging: [{ location: 'Rigging Shelf B', quantity: 1 }] }],
+        },
+        {
+          id: 'GARMIN_8612',
+          name: 'Garmin 8612 Monitor',
+          parts: [{ id: 'GARMIN_8612', name: 'Garmin 8612 Monitor', quantity: 1, pickLocation: 'Rigging Electronics Bin', staging: [{ location: 'Rigging Shelf B', quantity: 1 }] }],
+        },
+      ],
+    },
+  });
+
+  const picklist = useMemo(() => {
+    const boatData = masterData[selectedBoat];
+    if (!boatData) return [];
+  
+    const baseParts = [...boatData.parts];
+  
+    const partsToRemove = new Set(selectedOptions.flatMap(optionId =>
+      boatData.options.find(opt => opt.id === optionId)?.removes || []
+    ));
+  
+    const currentPicklist = baseParts.filter(part => !partsToRemove.has(part.name));
+  
+    selectedOptions.forEach(optionId => {
+      const option = boatData.options.find(opt => opt.id === optionId);
+      if (option) {
+        option.parts.forEach(part => {
+          currentPicklist.push({ ...part, isMaster: false });
+        });
+      }
+    });
+  
+    // Create a single, consolidated list for picking
+    const consolidatedList = currentPicklist.reduce((acc, part) => {
+      const existingPart = acc.find(p => p.name === part.name);
+      if (existingPart) {
+        existingPart.quantity += part.quantity;
+        existingPart.staging.push(...(part.staging || []));
+      } else {
+        acc.push({ ...part, staging: part.staging ? [...part.staging] : [] });
+      }
+      return acc;
+    }, []);
+  
+    // Sort by picking location for an optimized route
+    const sortedList = consolidatedList.sort((a, b) => {
+      const locationA = a.pickLocation || '';
+      const locationB = b.pickLocation || '';
+      return locationA.localeCompare(locationB);
+    });
+  
+    return sortedList;
+  }, [selectedBoat, selectedOptions, masterData]);
+
+  const handleOptionChange = useCallback((optionId) => {
+    setSelectedOptions((prevOptions) =>
+      prevOptions.includes(optionId)
+        ? prevOptions.filter((id) => id !== optionId)
+        : [...prevOptions, optionId]
+    );
+  }, []);
+  
+  const handlePickStatusChange = useCallback((status) => {
+    setPickedStatus(prev => ({
+      ...prev,
+      [picklist[currentStep].id]: status,
+    }));
+  }, [currentStep, picklist]);
+
+  const handleShortageInput = useCallback((e) => {
+    setShortageQuantity(e.target.value);
+  }, []);
+  
+  const handleNoneLeft = useCallback(() => {
+    setShortageQuantity('0');
+  }, []);
+
+  const handleCheckAllStaging = useCallback(() => {
+    setIsStagingComplete(true);
+  }, []);
+
+  const handleNextStep = useCallback(() => {
+    if (currentStep < picklist.length - 1) {
+      setCurrentStep(currentStep + 1);
+      setIsStagingComplete(false);
+      setShortageQuantity('');
+    }
+  }, [currentStep, picklist.length]);
+  
+  const handlePrevStep = useCallback(() => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+      setIsStagingComplete(false);
+      setShortageQuantity('');
+    }
+  }, [currentStep]);
+
+  const handleReset = useCallback(() => {
+    setCurrentStep(0);
+    setIsStagingComplete(false);
+    setPickedStatus({});
+    setSelectedOptions([]);
+    setShortageQuantity('');
+  }, []);
+
+  const renderInstruction = () => {
+    if (picklist.length === 0) {
+      return (
+        <p className="text-gray-500">Select a boat model and options to begin picking.</p>
+      );
+    }
+    
+    if (currentStep >= picklist.length) {
+      return (
+        <div className="text-center">
+          <p className="text-xl font-semibold text-green-600 mb-4">Picking and staging complete!</p>
+          <button onClick={handleReset} className="px-6 py-3 bg-sky-500 text-white rounded-full font-medium hover:bg-sky-600 transition-colors">
+            Start a New Pick
+          </button>
+        </div>
+      );
+    }
+  
+    const currentPart = picklist[currentStep];
+    const pickStatus = pickedStatus[currentPart.id] || 'none';
+    
+    const getPickButtonClass = (status) => {
+      if (pickStatus === status) {
+        return 'text-white';
+      }
+      return 'text-gray-800';
+    };
+
+    const getPickButtonColor = (status) => {
+      if (pickStatus === status) {
+        return status === 'all' ? 'bg-green-500' : 'bg-red-500';
+      }
+      return 'bg-gray-200 hover:bg-gray-300';
+    };
+    
+    return (
+      <div className="space-y-6">
+        <div className={`rounded-md p-6 shadow-md transition-colors ${pickStatus === 'all' ? 'bg-green-100' : pickStatus === 'shortage' ? 'bg-red-100' : 'bg-white'}`}>
+          <h3 className="text-2xl font-bold text-sky-600 border-b-2 border-sky-200 pb-2">
+            Step {currentStep + 1} of {picklist.length}
+          </h3>
+          <div className="mt-4 space-y-3">
+            <p className="text-gray-700 text-lg">
+              <span className="font-semibold">PICK:</span> Go to <span className="text-orange-500 font-bold">{currentPart.pickLocation}</span> and grab <span className="font-bold">{currentPart.quantity}</span> of the following part:
+            </p>
+            <p className={`font-extrabold text-xl ml-4`}>{currentPart.name}</p>
+          </div>
+          <div className="flex space-x-4 mt-4">
+            <button
+              onClick={() => handlePickStatusChange('all')}
+              className={`px-6 py-3 rounded-full font-bold transition-colors shadow-sm ${getPickButtonClass('all')} ${getPickButtonColor('all')}`}
+            >
+              Picked All
+            </button>
+            <button
+              onClick={() => handlePickStatusChange('shortage')}
+              className={`px-6 py-3 rounded-full font-bold transition-colors shadow-sm ${getPickButtonClass('shortage')} ${getPickButtonColor('shortage')}`}
+            >
+              Report Shortage
+            </button>
+          </div>
+          {pickStatus === 'shortage' && (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm text-red-500 font-semibold">
+                How many did you actually pick? (Need {currentPart.quantity})
+              </p>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={shortageQuantity}
+                  onChange={handleShortageInput}
+                  className="w-24 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="0"
+                />
+                <button
+                  onClick={handleNoneLeft}
+                  className="px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded-full font-medium hover:bg-gray-300"
+                >
+                  None Left
+                </button>
+              </div>
+              {shortageQuantity !== '' && (
+                <p className="text-sm text-red-600 font-medium">
+                  Shortage: {currentPart.quantity - parseInt(shortageQuantity || 0)} parts missing
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+  
+        <div className={`rounded-md p-6 shadow-md transition-colors ${isStagingComplete ? 'bg-green-100' : pickStatus === 'shortage' ? 'bg-orange-50' : 'bg-white'}`}>
+          <h3 className="text-2xl font-bold text-sky-600 border-b-2 border-sky-200 pb-2">
+            STAGING INSTRUCTIONS
+          </h3>
+          {pickStatus === 'shortage' && shortageQuantity !== '' ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-orange-600 font-semibold mb-2">
+                Only {shortageQuantity} parts available - stage what you have:
+              </p>
+              <ul className="space-y-3 list-disc list-inside">
+                {(() => {
+                  const availableParts = parseInt(shortageQuantity || 0);
+                  let remainingParts = availableParts;
+                  return currentPart.staging.map((item, index) => {
+                    const stagingQty = Math.min(item.quantity, remainingParts);
+                    remainingParts -= stagingQty;
+                    return (
+                      <li key={index} className={`text-lg ${stagingQty > 0 ? 'text-gray-700' : 'text-gray-400 line-through'}`}>
+                        Place <span className="font-bold">{stagingQty}</span> on the <span className="text-orange-500 font-bold">{item.location}</span> shelf
+                        {stagingQty === 0 && <span className="text-red-500 ml-2">(SKIP - No parts)</span>}
+                      </li>
+                    );
+                  });
+                })()}
+              </ul>
+            </div>
+          ) : (
+            <ul className="mt-4 space-y-3 list-disc list-inside">
+              {currentPart.staging.map((item, index) => (
+                <li key={index} className="text-lg text-gray-700">
+                  Place <span className="font-bold">{item.quantity}</span> on the <span className="text-orange-500 font-bold">{item.location}</span> shelf.
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={handleCheckAllStaging}
+            className={`mt-4 px-6 py-3 rounded-full font-bold transition-colors shadow-sm ${
+              isStagingComplete ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-800 hover:bg-green-200'
+            }`}
+          >
+            {isStagingComplete ? 'Staging Complete!' : 'Check Off Staging'}
+          </button>
+        </div>
+        <div className="flex justify-between mt-8">
+          <button
+            onClick={handlePrevStep}
+            disabled={currentStep === 0}
+            className={`px-8 py-4 text-xl bg-gray-500 text-white rounded-full font-bold transition-colors shadow-lg ${
+              currentStep === 0 ? 'cursor-not-allowed opacity-50' : 'hover:bg-gray-600'
+            }`}
+          >
+            Back
+          </button>
+          <button
+            onClick={handleNextStep}
+            disabled={pickStatus === 'none' || !isStagingComplete}
+            className={`px-8 py-4 text-xl bg-sky-500 text-white rounded-full font-bold transition-colors shadow-lg ${
+              (pickStatus === 'none' || !isStagingComplete) ? 'cursor-not-allowed opacity-50' : 'hover:bg-sky-600'
+            }`}
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-4xl font-bold text-center text-sky-600 mb-8">
+          Foresight BOM Picker
+        </h1>
+        
+        {/* Boat Selection */}
+        <div className="bg-white rounded-lg p-6 mb-6 shadow-md">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Select Boat Model</h2>
+          <div className="flex space-x-4">
+            {Object.keys(masterData).map((boatModel) => (
+              <button
+                key={boatModel}
+                onClick={() => {
+                  setSelectedBoat(boatModel);
+                  setSelectedOptions([]);
+                  setCurrentStep(0);
+                  setIsStagingComplete(false);
+                  setPickedStatus({});
+                }}
+                className={`px-6 py-3 rounded-full font-semibold transition-colors ${
+                  selectedBoat === boatModel
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                }`}
+              >
+                {boatModel}' Boat
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Options Selection */}
+        {selectedBoat && masterData[selectedBoat].options.length > 0 && (
+          <div className="bg-white rounded-lg p-6 mb-6 shadow-md">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-4">Select Options</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {masterData[selectedBoat].options.map((option) => (
+                <label key={option.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={selectedOptions.includes(option.id)}
+                    onChange={() => handleOptionChange(option.id)}
+                    className="w-5 h-5 text-sky-600 rounded focus:ring-sky-500"
+                  />
+                  <span className="text-gray-700 font-medium">{option.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Picking Instructions */}
+        <div className="bg-white rounded-lg p-6 shadow-md">
+          {renderInstruction()}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,594 @@
+'use client';
+
+import React from "react";
+import { useAllBars, useScheduleStore } from '../lib/schedule-store';
+
+// Enhanced timeline with add/subtract weeks and improved drag & drop + notes
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const isoAddWeeks = (iso, w) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + 7 * w);
+  return d.toISOString().slice(0, 10);
+};
+const colorForBoat = (name) => {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 85% 35%)`;
+};
+
+const colorForBoatBg = (name) => {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return `hsla(${h % 360}, 85%, 45%, 0.4)`;
+};
+const weekRange = (count, startIso) => {
+  const base = startIso ? new Date(startIso) : new Date();
+  const wd = base.getUTCDay();
+  const monday = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() - ((wd + 6) % 7)));
+  const arr = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(monday.getTime() + i * ONE_WEEK_MS);
+    arr.push(d.toISOString().slice(0, 10));
+  }
+  return arr;
+};
+
+const base = weekRange(1)[0];
+
+// Helper to calculate bar height based on notes content
+const calculateBarHeight = (bar, weeks) => {
+  const baseHeight = 48;
+  let maxNoteLines = 0;
+  
+  if (bar.weekNotes && bar.start) {
+    for (let i = 0; i < bar.weeks; i++) {
+      const weekIso = isoAddWeeks(bar.start, i);
+      if (weekIso) {
+        const note = bar.weekNotes[weekIso];
+        if (note) {
+          // Count actual line breaks plus wrapped lines
+          const explicitLines = note.split('\n').length;
+          const totalChars = note.length;
+          const wrappedLines = Math.ceil(totalChars / 20); // Assuming ~20 chars per line in bar
+          const actualLines = Math.max(explicitLines, wrappedLines);
+          maxNoteLines = Math.max(maxNoteLines, actualLines);
+        }
+      }
+    }
+  }
+  
+  // Add 14px per line of notes (slightly more space)
+  return baseHeight + (maxNoteLines * 14);
+};
+const mk26 = (boat) => [
+  { id: boat + "-26-lam", boat: boat, model: "26", dept: "lamination", startIso: base, weeks: 3 },
+  { id: boat + "-26-ass", boat: boat, model: "26", dept: "assembly", startIso: isoAddWeeks(base, 3), weeks: 3 },
+  { id: boat + "-26-fin", boat: boat, model: "26", dept: "finishing", startIso: isoAddWeeks(base, 6), weeks: 3 },
+  { id: boat + "-26-rig", boat: boat, model: "26", dept: "rigging", startIso: isoAddWeeks(base, 9), weeks: 3 },
+  { id: boat + "-26-qc", boat: boat, model: "26", dept: "qc", startIso: isoAddWeeks(base, 12), weeks: 1 }
+];
+const mk40 = (boat) => [
+  { id: boat + "-40-lam", boat: boat, model: "40", dept: "lamination", startIso: base, weeks: 8 },
+  { id: boat + "-40-ass", boat: boat, model: "40", dept: "assembly", startIso: isoAddWeeks(base, 8), weeks: 8 },
+  { id: boat + "-40-fin", boat: boat, model: "40", dept: "finishing", startIso: isoAddWeeks(base, 16), weeks: 8 },
+  { id: boat + "-40-rig", boat: boat, model: "40", dept: "rigging", startIso: isoAddWeeks(base, 24), weeks: 8 },
+  { id: boat + "-40-qc", boat: boat, model: "40", dept: "qc", startIso: isoAddWeeks(base, 32), weeks: 1 }
+];
+
+export default function TimelineWithAddBoat() {
+  const bars = useAllBars();
+  const { addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar } = useScheduleStore();
+  const hasLoadedRef = React.useRef(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  
+  // Load data from API on mount (only once)
+  React.useEffect(() => {
+    if (hasLoadedRef.current) return;
+    
+    const loadData = async () => {
+      try {
+        const response = await fetch('/api/schedule-store');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.bars && data.bars.length > 0) {
+            setBars(data.bars);
+            hasLoadedRef.current = true;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load schedule data:', error);
+      }
+    };
+    
+    loadData();
+  }, []); // Remove addBars dependency to prevent re-runs
+  
+  // Save function
+  const saveSchedule = async () => {
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/schedule-store', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bars, tasks: [] })
+      });
+      
+      if (response.ok) {
+        console.log('Schedule saved successfully');
+      } else {
+        console.error('Failed to save schedule');
+      }
+    } catch (error) {
+      console.error('Error saving schedule:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  const weeks = React.useMemo(() => weekRange(40), []);
+  const weekIndex = React.useMemo(() => new Map(weeks.map((w, i) => [w, i])), [weeks]);
+
+  // Convert bars to runs format for compatibility with existing UI
+  const runs = React.useMemo(() => {
+    const deptMapping = {
+      'LAM': 'lamination',
+      'ASM': 'assembly', 
+      'FIN': 'finishing',
+      'RIG': 'rigging'
+    };
+    
+    return bars.map(bar => ({
+      id: bar.id,
+      boat: bar.boat,
+      model: bar.model,
+      dept: deptMapping[bar.dept] || bar.dept.toLowerCase(),
+      startIso: bar.start,
+      weeks: bar.duration,
+      note: bar.note,
+      weekNotes: bar.weekNotes || {}
+    }));
+  }, [bars]);
+
+  // State for UI interactions (remove undo/redo for now as provider manages state)
+
+  const [hoverWeek, setHoverWeek] = React.useState(null);
+  const [selected, setSelected] = React.useState(null);
+  const [statusOpen, setStatusOpen] = React.useState(false);
+  const [statusCtx, setStatusCtx] = React.useState(null);
+  const [notes, setNotes] = React.useState({});
+  const [addBoatOpen, setAddBoatOpen] = React.useState(false);
+  const [newBoatName, setNewBoatName] = React.useState('');
+  const [newBoatModel, setNewBoatModel] = React.useState('26');
+
+  // Enhanced drag and drop
+  const [draggingId, setDraggingId] = React.useState(null);
+  const [dragOverInfo, setDragOverInfo] = React.useState(null);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      const el = document.activeElement;
+      const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (typing) return;
+      if (!selected) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const run = runs.find(r => r.id === selected.runId);
+        if (run) { 
+          // For now, just reduce duration by 1 week
+          updateBar(run.id, { duration: Math.max(1, run.weeks - 1) });
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected, runs, updateBar]);
+
+  const deleteWeekFromRun = (run, weekIso) => {
+    const startIdx = weekIndex.get(run.startIso) ?? -1;
+    const delIdx = weekIndex.get(weekIso) ?? -1;
+    if (startIdx < 0 || delIdx < 0) return;
+    const offset = delIdx - startIdx;
+    if (offset < 0 || offset >= run.weeks) return;
+    const leftWeeks = offset;
+    const rightWeeks = run.weeks - offset - 1;
+    // Use provider's splitBar if we're splitting, otherwise just reduce duration
+    if (leftWeeks > 0 && rightWeeks > 0) {
+      splitBar(run.id, [leftWeeks, rightWeeks]);
+    } else {
+      updateBar(run.id, { duration: run.weeks - 1 });
+    }
+    setSelected(null); setStatusOpen(false);
+  };
+
+  const addWeekToRun = () => {
+    if (!selected) return;
+    const run = runs.find(r => r.id === selected.runId);
+    if (!run) return;
+    // Use provider's addWeek function
+    addWeek(selected.runId, 0);
+    if (statusCtx) {
+      setStatusCtx({ ...statusCtx, totalWeeks: run.weeks + 1 });
+    }
+  };
+
+  const subtractWeekFromRun = () => {
+    if (!selected) return;
+    const run = runs.find(r => r.id === selected.runId);
+    if (!run || run.weeks <= 1) return;
+    // Update duration in provider
+    updateBar(selected.runId, { duration: run.weeks - 1 });
+    if (statusCtx) {
+      setStatusCtx({ ...statusCtx, totalWeeks: run.weeks - 1 });
+    }
+  };
+
+  const addNewBoat = () => {
+    if (!newBoatName.trim()) return;
+    
+    // Find the latest end date across all boats
+    let latestEndWeek = 0;
+    runs.forEach(run => {
+      const startIdx = weekIndex.get(run.startIso) ?? 0;
+      const endIdx = startIdx + run.weeks - 1;
+      latestEndWeek = Math.max(latestEndWeek, endIdx);
+    });
+    
+    // Start new boat right after the latest end (add 1 week buffer)
+    const newStartIdx = latestEndWeek + 1;
+    const newStartIso = weeks[newStartIdx] || weeks[weeks.length - 10];
+    
+    // Create new boat bars for provider
+    const timestamp = Date.now();
+    const newBars = [];
+    
+    if (newBoatModel === '26') {
+      newBars.push(
+        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '26', dept: 'LAM', start: newStartIso, duration: 3 },
+        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '26', dept: 'ASM', start: isoAddWeeks(newStartIso, 3), duration: 3 },
+        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '26', dept: 'FIN', start: isoAddWeeks(newStartIso, 6), duration: 3 },
+        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '26', dept: 'RIG', start: isoAddWeeks(newStartIso, 9), duration: 3 }
+      );
+    } else {
+      newBars.push(
+        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '40', dept: 'LAM', start: newStartIso, duration: 8 },
+        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '40', dept: 'ASM', start: isoAddWeeks(newStartIso, 8), duration: 8 },
+        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '40', dept: 'FIN', start: isoAddWeeks(newStartIso, 16), duration: 8 },
+        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '40', dept: 'RIG', start: isoAddWeeks(newStartIso, 24), duration: 8 }
+      );
+    }
+    
+    addBars(newBars);
+    
+    // Reset form
+    setNewBoatName('');
+    setNewBoatModel('26');
+    setAddBoatOpen(false);
+  };
+
+  const onDropDeptWeek = (dept, weekIso) => {
+    if (!draggingId) return;
+    const run = runs.find(r => r.id === draggingId);
+    if (!run) return;
+    
+    const currentStartIdx = weekIndex.get(run.startIso) ?? 0;
+    const dropIdx = weekIndex.get(weekIso) ?? 0;
+    
+    let newStartIdx;
+    if (dropIdx > currentStartIdx) {
+      // Moving forward - make the END align with drop position
+      newStartIdx = dropIdx - (run.weeks - 1);
+    } else {
+      // Moving backward - make the START align with drop position  
+      newStartIdx = dropIdx;
+    }
+    
+    // Ensure we don't go negative
+    newStartIdx = Math.max(0, newStartIdx);
+    const newStartIso = weeks[newStartIdx];
+    
+    if (!newStartIso) return;
+    
+    // Update the bar in provider with new start date and department
+    updateBar(draggingId, { start: newStartIso, dept: dept.toUpperCase() });
+    setDraggingId(null); 
+    setDragOverInfo(null);
+  };
+
+  const sortRuns = (a, b) => {
+    if (a.dept !== b.dept) return a.dept.localeCompare(b.dept);
+    if (a.model !== b.model) return a.model === '26' ? -1 : 1;
+    if (a.startIso !== b.startIso) return a.startIso < b.startIso ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  };
+
+  const depts = ['lamination', 'assembly', 'finishing', 'rigging', 'qc'];
+
+  const percentFor = (run, weekIso) => {
+    const startIdx = weekIndex.get(run.startIso) ?? 0;
+    const idx = weekIndex.get(weekIso) ?? 0;
+    const pos = Math.max(0, Math.min(run.weeks - 1, idx - startIdx));
+    return Math.round(((pos + 1) / run.weeks) * 100);
+  };
+
+  const selectedRun = selected ? runs.find(r => r.id === selected.runId) : null;
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Production Timeline</h1>
+        <div className="flex items-center gap-2">
+          <button 
+            className="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+            onClick={saveSchedule}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save Schedule'}
+          </button>
+          <button 
+            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={() => setAddBoatOpen(true)}
+          >
+            + Add Boat
+          </button>
+        </div>
+      </div>
+      
+      <div className="overflow-auto max-h-screen">
+        <table className="min-w-[1200px] w-full border">
+          <thead className="bg-neutral-50">
+            <tr>
+              <th className="sticky left-0 top-0 bg-neutral-50 border-r px-2 py-1 text-left w-44" style={{ zIndex: 1000, backgroundColor: 'rgb(250 250 250)' }}>Department / Actual</th>
+              {weeks.map(w => (
+                <th key={w} className="sticky top-0 border px-2 py-1 text-center text-xs whitespace-nowrap bg-neutral-50" style={{ minWidth: '200px', zIndex: 999, backgroundColor: 'rgb(250 250 250)' }}>
+                  {new Date(w).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {depts.map((dept) => {
+              // Calculate the minimum height needed for this department row
+              const deptRuns = runs.filter(r => r.dept === dept);
+              const maxBarHeight = deptRuns.reduce((max, r) => {
+                const barHeight = calculateBarHeight(r, r.weeks);
+                const topOffset = r.model === '26' ? 12 : 78;
+                return Math.max(max, topOffset + barHeight + 12); // Add 12px bottom padding
+              }, 144); // minimum 144px
+
+              return (
+                <tr key={dept}>
+                  <th className="sticky left-0 bg-white border border-r px-2 py-1 text-left capitalize" style={{ zIndex: 999, backgroundColor: 'white' }}>{dept}</th>
+                  <td className="p-0 border" colSpan={weeks.length}>
+                    <div className="relative" style={{ minHeight: `${maxBarHeight}px` }}>
+                    
+                    {/* Week grid background */}
+                    <div className="absolute inset-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${weeks.length}, 200px)` }}>
+                      {weeks.map((w) => (
+                        <div
+                          key={w}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverInfo({ dept, weekIso: w }); }}
+                          onDrop={() => onDropDeptWeek(dept, w)}
+                          onMouseEnter={() => setHoverWeek(w)}
+                          onMouseLeave={() => { setHoverWeek(null); setDragOverInfo(null); }}
+                          className={`border-l first:border-l-0 border-gray-300 ${dragOverInfo && dragOverInfo.dept === dept && dragOverInfo.weekIso === w ? 'bg-blue-100 border-blue-400' : ''}`}
+                          style={{ minHeight: '100%' }}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Boats */}
+                    {runs.filter(r => r.dept === dept).sort(sortRuns).map((r) => {
+                      const startIdx = weekIndex.get(r.startIso);
+                      if (startIdx == null || startIdx < 0) return null;
+                      const span = Math.max(1, Math.min(r.weeks, weeks.length - startIdx));
+                      const boatColor = colorForBoat(r.boat);
+                      const boatBgColor = colorForBoatBg(r.boat);
+                      const isDragging = draggingId === r.id;
+                      const isSelected = selected && selected.runId === r.id;
+                      
+                      // Position boats by model: 26s on first line, 40s on second line per department
+                      const topOffset = r.model === '26' ? 12 : 78;
+                      const barHeight = calculateBarHeight(r, r.weeks);
+                      
+                      return (
+                        <div
+                          key={r.id}
+                          draggable
+                          onDragStart={(e) => { 
+                            setDraggingId(r.id); 
+                            e.dataTransfer.effectAllowed = 'move';
+                            try { e.dataTransfer.setData('text/plain', r.id); } catch {} 
+                          }}
+                          onDragEnd={() => { setDraggingId(null); setDragOverInfo(null); }}
+                          className={`absolute flex flex-col justify-start p-2 text-sm font-semibold text-gray-800 rounded border-2 select-none cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-blue-500 shadow-md' : 'shadow-md'}`}
+                          style={{ 
+                            left: `${startIdx * 200}px`,
+                            width: `${span * 200}px`,
+                            top: `${topOffset}px`,
+                            height: `${barHeight}px`,
+                            borderColor: boatColor, 
+                            backgroundColor: boatBgColor,
+                            zIndex: isSelected ? 200 : (r.model === '26' ? 60 : 30)
+                          }}
+                          title={`${r.boat} — ${r.dept} (${r.weeks}w) - Drag to move`}
+                        >
+                          <div className="truncate text-center w-full">{r.boat} <span className="opacity-60 text-[10px]">({r.model})</span></div>
+                          
+                          {/* Notes display */}
+                          <div className="text-xs text-gray-700 mt-1 flex-1" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)` }}>
+                            {Array.from({ length: span }).map((_, i) => {
+                              const weekIso = isoAddWeeks(r.startIso, i);
+                              const note = r.weekNotes?.[weekIso];
+                              return (
+                                <div key={i} className="px-1 border-l first:border-l-0 border-neutral-300/30 text-left overflow-visible" style={{ fontSize: '10px', lineHeight: '12px', wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                  {note || ''}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* Week selection buttons */}
+                          <div className="absolute inset-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)` }}>
+                            {Array.from({ length: span }).map((_, i) => {
+                              const iso = isoAddWeeks(r.startIso, i);
+                              const active = selected && selected.runId === r.id && selected.weekIso === iso;
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    setSelected({ runId: r.id, weekIso: iso }); 
+                                    setStatusCtx({ boat: r.boat, dept: r.dept, model: r.model, weekIso: iso, weekNum: i + 1, totalWeeks: r.weeks }); 
+                                    setStatusOpen(true); 
+                                  }}
+                                  className={`border-l first:border-l-0 border-neutral-300/30 focus:outline-none hover:bg-blue-50/60 ${active ? 'bg-blue-200/70' : ''}`}
+                                  style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
+                                  aria-label={`Select week ${iso}`}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </td>
+              </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {addBoatOpen && (
+        <div className="fixed left-4 top-1/2 transform -translate-y-1/2 w-[320px] bg-white shadow-xl border rounded-lg p-4" style={{ zIndex: 10000 }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold">Add New Boat</div>
+            <button className="text-sm px-2 py-1 border rounded" onClick={() => setAddBoatOpen(false)}>Cancel</button>
+          </div>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Boat Name</label>
+              <input
+                type="text"
+                className="w-full border rounded px-2 py-1 text-sm"
+                placeholder="Enter boat name..."
+                value={newBoatName}
+                onChange={(e) => setNewBoatName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addNewBoat()}
+                autoFocus
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">Model</label>
+              <select
+                className="w-full border rounded px-2 py-1 text-sm"
+                value={newBoatModel}
+                onChange={(e) => setNewBoatModel(e.target.value)}
+              >
+                <option value="26">Model 26 (3 weeks per dept)</option>
+                <option value="40">Model 40 (8 weeks per dept)</option>
+              </select>
+            </div>
+            
+            <div className="flex gap-2 pt-2">
+              <button
+                className="flex-1 bg-black text-white px-3 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50"
+                onClick={addNewBoat}
+                disabled={!newBoatName.trim()}
+              >
+                Create Boat
+              </button>
+            </div>
+            
+            <div className="text-xs text-neutral-600">
+              New boat will be scheduled after the last boat in the timeline.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {statusOpen && statusCtx && (
+        <div className="fixed right-0 top-0 h-full w-[380px] bg-white shadow-xl border-l p-4" style={{ zIndex: 10000 }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold">Week Status</div>
+            <button className="text-sm px-2 py-1 border rounded" onClick={() => setStatusOpen(false)}>Close</button>
+          </div>
+          
+          <div className="mb-4 p-3 bg-neutral-50 rounded border">
+            <div className="font-medium mb-2 text-sm">Adjust Timeline</div>
+            <div className="flex items-center gap-2">
+              <button 
+                className="px-3 py-1 text-sm border rounded hover:bg-neutral-100 disabled:opacity-50"
+                onClick={subtractWeekFromRun}
+                disabled={!selectedRun || selectedRun.weeks <= 1}
+                title="Remove one week from this run"
+              >
+                - Week
+              </button>
+              <span className="text-sm text-neutral-600 px-2">
+                {selectedRun ? selectedRun.weeks : 0} weeks
+              </span>
+              <button 
+                className="px-3 py-1 text-sm border rounded hover:bg-neutral-100"
+                onClick={addWeekToRun}
+                disabled={!selectedRun}
+                title="Add one week to this run"
+              >
+                + Week
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-sm">
+            <div><span className="font-medium">Boat:</span> {statusCtx.boat} <span className="opacity-60">({statusCtx.model})</span></div>
+            <div className="capitalize"><span className="font-medium">Dept:</span> {statusCtx.dept}</div>
+            <div><span className="font-medium">Week:</span> {new Date(statusCtx.weekIso).toLocaleDateString()} (#{statusCtx.weekNum} of {statusCtx.totalWeeks})</div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">% complete:</span>
+              <div className="flex-1 h-2 bg-neutral-200 rounded">
+                <div className="h-2 bg-black rounded" style={{ width: `${percentFor(selectedRun || { weeks: 1, startIso: statusCtx.weekIso }, statusCtx.weekIso)}%` }} />
+              </div>
+              <span className="tabular-nums">{percentFor(selectedRun || { weeks: 1, startIso: statusCtx.weekIso }, statusCtx.weekIso)}%</span>
+            </div>
+            <div>
+              <div className="font-medium mb-1">Notes</div>
+              <textarea
+                className="w-full h-24 border rounded p-2 resize-none"
+                placeholder="Add quick notes for this week…"
+                value={selectedRun?.weekNotes?.[statusCtx.weekIso] || ''}
+                onChange={e => {
+                  if (selectedRun) {
+                    updateWeekNote(selectedRun.id, statusCtx.weekIso, e.target.value);
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.stopPropagation(); // Prevent any parent handlers
+                  }
+                }}
+              />
+              <button
+                className="mt-2 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                onClick={saveSchedule}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save Notes'}
+              </button>
+            </div>
+            <div>
+              <a href={`/tracker?boat=${encodeURIComponent(statusCtx.boat)}&open=1`} className="inline-block mt-1 text-white bg-black px-3 py-1.5 rounded hover:opacity-90">Open Boat</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="text-xs text-neutral-600">
+        Tips: Drag a chip to any department/week to move it. Click inside a chip to select a week; use +/- Week buttons to adjust timeline length. Press <kbd>Delete</kbd> to remove a week (splits the run). Undo/Redo with Ctrl+Z / Ctrl+Y.
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,9 @@
+Mobile Development URLs:
+
+Main App: http://192.168.1.83:3001
+Sales: http://192.168.1.83:3001/sales  
+Timeline: http://192.168.1.83:3001/timeline-v2
+Lamination: http://192.168.1.83:3001/lamination
+Tracker: http://192.168.1.83:3001/tracker
+
+Copy and paste these URLs into your mobile browser's address bar.
