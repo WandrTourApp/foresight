@@ -107,8 +107,8 @@ function reducer(state: State, action: Action): State {
       const bars = state.bars.map(bar => {
         if (bar.id === action.barId) {
           const weekNotes = { ...bar.weekNotes };
-          if (action.note.trim()) {
-            weekNotes[action.weekIso] = action.note.trim();
+          if (action.note.trim().length > 0) {
+            weekNotes[action.weekIso] = action.note;
           } else {
             delete weekNotes[action.weekIso];
           }

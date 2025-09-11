@@ -12,6 +12,17 @@ const isoAddWeeks = (iso, w) => {
   d.setUTCDate(d.getUTCDate() + 7 * w);
   return d.toISOString().slice(0, 10);
 };
+
+// Get the Monday ISO date for any given date (canonical week key)
+const getWeekMonday = (isoDate) => {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return null;
+  const day = d.getUTCDay();
+  const diff = (day === 0 ? -6 : 1) - day; // Monday is day 1
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+};
 const colorForBoat = (name) => {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -42,16 +53,20 @@ const calculateBarHeight = (bar, weeks) => {
   const baseHeight = 48;
   let maxNoteLines = 0;
   
-  if (bar.weekNotes && bar.start) {
-    for (let i = 0; i < bar.weeks; i++) {
-      const weekIso = isoAddWeeks(bar.start, i);
-      if (weekIso) {
-        const note = bar.weekNotes[weekIso];
+  // Use startIso for runs, start for bars
+  const startDate = bar.startIso || bar.start;
+  
+  if (bar.weekNotes && startDate) {
+    for (let i = 0; i < weeks; i++) {
+      const weekIso = isoAddWeeks(startDate, i);
+      const weekMonday = getWeekMonday(weekIso);
+      if (weekMonday) {
+        const note = bar.weekNotes[weekMonday];
         if (note) {
           // Count actual line breaks plus wrapped lines
           const explicitLines = note.split('\n').length;
           const totalChars = note.length;
-          const wrappedLines = Math.ceil(totalChars / 20); // Assuming ~20 chars per line in bar
+          const wrappedLines = Math.ceil(totalChars / 30); // ~30 chars per line for 200px width
           const actualLines = Math.max(explicitLines, wrappedLines);
           maxNoteLines = Math.max(maxNoteLines, actualLines);
         }
@@ -59,8 +74,8 @@ const calculateBarHeight = (bar, weeks) => {
     }
   }
   
-  // Add 14px per line of notes (slightly more space)
-  return baseHeight + (maxNoteLines * 14);
+  // Add 18px per line of notes for better readability
+  return baseHeight + (maxNoteLines * 18);
 };
 const mk26 = (boat) => [
   { id: boat + "-26-lam", boat: boat, model: "26", dept: "lamination", startIso: base, weeks: 3 },
@@ -350,11 +365,27 @@ export default function TimelineWithAddBoat() {
             {depts.map((dept) => {
               // Calculate the minimum height needed for this department row
               const deptRuns = runs.filter(r => r.dept === dept);
-              const maxBarHeight = deptRuns.reduce((max, r) => {
-                const barHeight = calculateBarHeight(r, r.weeks);
-                const topOffset = r.model === '26' ? 12 : 78;
-                return Math.max(max, topOffset + barHeight + 12); // Add 12px bottom padding
-              }, 144); // minimum 144px
+              
+              // Calculate max height for Model 26 bars
+              const model26Bars = deptRuns.filter(r => r.model === '26');
+              const maxModel26Height = model26Bars.reduce((max, bar) => {
+                const height = calculateBarHeight(bar, bar.weeks);
+                return Math.max(max, height);
+              }, 48); // minimum bar height
+              
+              // Calculate max height for Model 40 bars
+              const model40Bars = deptRuns.filter(r => r.model === '40');
+              const maxModel40Height = model40Bars.reduce((max, bar) => {
+                const height = calculateBarHeight(bar, bar.weeks);
+                return Math.max(max, height);
+              }, 48); // minimum bar height
+              
+              // Total row height needs to accommodate both rows with dynamic positioning
+              const totalHeight = model40Bars.length > 0 
+                ? (12 + maxModel26Height + 20 + maxModel40Height + 20) // top padding + model26 + gap + model40 + bottom padding
+                : (12 + maxModel26Height + 20); // just model26 with padding
+              
+              const maxBarHeight = Math.max(totalHeight, 160); // minimum 160px
 
               return (
                 <tr key={dept}>
@@ -387,8 +418,14 @@ export default function TimelineWithAddBoat() {
                       const isDragging = draggingId === r.id;
                       const isSelected = selected && selected.runId === r.id;
                       
-                      // Position boats by model: 26s on first line, 40s on second line per department
-                      const topOffset = r.model === '26' ? 12 : 78;
+                      // Calculate dynamic position - Model 40s need to be below all Model 26s
+                      const model26Bars = runs.filter(run => run.dept === dept && run.model === '26');
+                      const maxModel26Height = model26Bars.reduce((max, bar26) => {
+                        const height = calculateBarHeight(bar26, bar26.weeks);
+                        return Math.max(max, height);
+                      }, 48); // minimum bar height
+                      
+                      const topOffset = r.model === '26' ? 12 : (12 + maxModel26Height + 20); // 20px gap between rows
                       const barHeight = calculateBarHeight(r, r.weeks);
                       
                       return (
@@ -409,19 +446,21 @@ export default function TimelineWithAddBoat() {
                             height: `${barHeight}px`,
                             borderColor: boatColor, 
                             backgroundColor: boatBgColor,
-                            zIndex: isSelected ? 200 : (r.model === '26' ? 60 : 30)
+                            zIndex: isSelected ? 200 : (r.model === '26' ? 60 : 30),
+                            overflow: 'visible'
                           }}
                           title={`${r.boat} — ${r.dept} (${r.weeks}w) - Drag to move`}
                         >
                           <div className="truncate text-center w-full">{r.boat} <span className="opacity-60 text-[10px]">({r.model})</span></div>
                           
                           {/* Notes display */}
-                          <div className="text-xs text-gray-700 mt-1 flex-1" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)` }}>
+                          <div className="text-xs text-gray-700 mt-1" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)`, overflow: 'visible' }}>
                             {Array.from({ length: span }).map((_, i) => {
                               const weekIso = isoAddWeeks(r.startIso, i);
-                              const note = r.weekNotes?.[weekIso];
+                              const weekMonday = getWeekMonday(weekIso);
+                              const note = weekMonday ? r.weekNotes?.[weekMonday] : null;
                               return (
-                                <div key={i} className="px-1 border-l first:border-l-0 border-neutral-300/30 text-left overflow-visible" style={{ fontSize: '10px', lineHeight: '12px', wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                <div key={i} className="px-1 border-l first:border-l-0 border-neutral-300/30 text-left overflow-visible" style={{ fontSize: '11px', lineHeight: '14px', wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
                                   {note || ''}
                                 </div>
                               );
@@ -438,8 +477,9 @@ export default function TimelineWithAddBoat() {
                                   key={i}
                                   onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    setSelected({ runId: r.id, weekIso: iso }); 
-                                    setStatusCtx({ boat: r.boat, dept: r.dept, model: r.model, weekIso: iso, weekNum: i + 1, totalWeeks: r.weeks }); 
+                                    const weekMonday = getWeekMonday(iso);
+                                    setSelected({ runId: r.id, weekIso: weekMonday }); 
+                                    setStatusCtx({ boat: r.boat, dept: r.dept, model: r.model, weekIso: weekMonday, weekNum: i + 1, totalWeeks: r.weeks }); 
                                     setStatusOpen(true); 
                                   }}
                                   className={`border-l first:border-l-0 border-neutral-300/30 focus:outline-none hover:bg-blue-50/60 ${active ? 'bg-blue-200/70' : ''}`}
@@ -563,11 +603,6 @@ export default function TimelineWithAddBoat() {
                 onChange={e => {
                   if (selectedRun) {
                     updateWeekNote(selectedRun.id, statusCtx.weekIso, e.target.value);
-                  }
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.stopPropagation(); // Prevent any parent handlers
                   }
                 }}
               />
