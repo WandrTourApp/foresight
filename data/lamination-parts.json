@@ -25,7 +25,8 @@
           "action": "Part created",
           "by": "User"
         }
-      ]
+      ],
+      "scheduledWeek": "2025-09-15"
     },
     {
       "id": "P-1757634547814",
@@ -49,6 +50,33 @@
       "history": [
         {
           "ts": "2025-09-11",
+          "action": "Part created",
+          "by": "User"
+        }
+      ]
+    },
+    {
+      "name": "vbnm,",
+      "boat": {
+        "id": "B-26-NEW",
+        "label": "NEW • 26-ft",
+        "length": 26,
+        "colorHex": "#22c55e",
+        "shipWeek": "TBD"
+      },
+      "lamType": "Skin",
+      "gelcoat": "White",
+      "qtyNeeded": 1,
+      "qtyDone": 0,
+      "stage": "Unscheduled",
+      "dueDate": "2025-09-12",
+      "assignee": "",
+      "notes": "",
+      "scheduledWeek": "2025-09-15",
+      "id": "P-1757671796820",
+      "history": [
+        {
+          "ts": "2025-09-12T10:09:56.820Z",
           "action": "Part created",
           "by": "User"
         }

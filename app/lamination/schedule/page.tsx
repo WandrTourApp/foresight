@@ -623,13 +623,16 @@ export default function PartsPagePrototype() {
   // Build week sections (either single selected week or stacked)
   const weekSections = useMemo(() => {
     const count = stackWeeks ? stackCount : 1;
-    const currentWeekStart = startOfWeek(new Date()); // Use consistent week start calculation
+    const baseWeekStart = startOfWeek(new Date());
+    const currentWeekStart = baseWeekStart;
     
     return Array.from({ length: count }).map((_, i) => {
       const off = weekOffset + i;
-      // Use consistent startOfWeek calculation for all week boundaries
-      const weekStart = startOfWeek(new Date());
+      
+      // Calculate week start by adding days to a base date
+      const weekStart = new Date(baseWeekStart);
       weekStart.setDate(weekStart.getDate() + (off * 7));
+      
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 6);
       
@@ -637,14 +640,18 @@ export default function PartsPagePrototype() {
       const weekStartISO = iso(weekStart);
       
       const list = filteredBase.filter((p) => {
-        // Use scheduledWeek if available, otherwise fall back to dueDate
-        const dateToCheck = p.scheduledWeek ? new Date(p.scheduledWeek) : new Date(p.dueDate);
-        const partWeekStart = startOfWeek(dateToCheck);
-        const partWeekStartISO = iso(partWeekStart);
+        // Simple matching: if scheduledWeek matches this exact week start ISO string
+        if (p.scheduledWeek) {
+          return p.scheduledWeek === weekStartISO;
+        }
         
-        return partWeekStartISO === weekStartISO;
+        // Fall back to due date for parts without scheduled week
+        const dueWeekStart = startOfWeek(new Date(p.dueDate));
+        const dueWeekStartISO = iso(dueWeekStart);
+        return dueWeekStartISO === weekStartISO;
       });
-      return { key: `w${off}`, offset: off, range, items: list };
+      
+      return { key: `w${off}`, offset: off, range, items: list, weekStartISO };
     }).filter(section => {
       // Filter out past weeks if hidePastWeeks is enabled
       if (filters.hidePastWeeks) {
@@ -828,7 +835,7 @@ export default function PartsPagePrototype() {
         {weekSections.map((section) => {
           const weekLabel = `Week of ${section.range.start.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
           const grouped = groupRows(section.items);
-          const weekStartISO = iso(section.range.start);
+          const weekStartISO = section.weekStartISO;
           return (
             <div key={section.key} className="rounded-xl border">
               <div 
@@ -839,9 +846,18 @@ export default function PartsPagePrototype() {
                   const draggedId = draggingId || e.dataTransfer.getData("text/id");
                   if (!draggedId) return;
                   
-                  const targetWeekStart = iso(section.range.start); // range.start is already the Monday
+                  const targetWeekStart = section.weekStartISO; // Use the exact same ISO string from week section
                   setParts((prev) => {
                     const updated = movePartToWeek(prev, draggedId, targetWeekStart);
+                    // Save the moved part to API
+                    const movedPart = updated.find(p => p.id === draggedId);
+                    if (movedPart) {
+                      fetch('/api/lamination-parts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(movedPart)
+                      });
+                    }
                     return updated;
                   });
                   setDraggingId(null);
@@ -901,23 +917,49 @@ export default function PartsPagePrototype() {
                                 e.preventDefault();
                                 const src = draggingId || e.dataTransfer.getData("text/id");
                                 if (!src) return;
-                                setParts((prev) => {
-                                  const next = reorderWithinGroup(prev, src, p.id, organize, stackWeeks);
-                                  // Persist new order for this (view, week, group)
-                                  if (organize === "Boat" || organize === "Lamination Type") {
-                                    const orderIds = next
-                                      .filter((q) => {
-                                        const d = new Date(q.dueDate);
-                                        return d >= section.range.start && d <= section.range.end && groupKeyFor(q, organize) === groupKey;
-                                      })
-                                      .map((q) => q.id);
-                                    saveGroupOrder(organize, weekStartISO, groupKey, orderIds);
-                                  }
-                                  return next;
-                                });
+                                
+                                // Check if this is a cross-week drop (different scheduled weeks)
+                                const srcPart = parts.find(part => part.id === src);
+                                const srcWeek = srcPart?.scheduledWeek || (srcPart ? iso(startOfWeek(new Date(srcPart.dueDate))) : null);
+                                const targetWeek = section.weekStartISO;
+                                
+                                if (srcWeek !== targetWeek) {
+                                  // Cross-week move: just move to this week
+                                  setParts((prev) => {
+                                    const updated = movePartToWeek(prev, src, targetWeek);
+                                    // Save the moved part to API
+                                    const movedPart = updated.find(p => p.id === src);
+                                    if (movedPart) {
+                                      fetch('/api/lamination-parts', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(movedPart)
+                                      });
+                                    }
+                                    return updated;
+                                  });
+                                  const weekLabel = `Week of ${new Date(targetWeek).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+                                  setToast("Part moved to " + weekLabel);
+                                } else {
+                                  // Within-week reorder
+                                  setParts((prev) => {
+                                    const next = reorderWithinGroup(prev, src, p.id, organize, stackWeeks);
+                                    // Persist new order for this (view, week, group)
+                                    if (organize === "Boat" || organize === "Lamination Type") {
+                                      const orderIds = next
+                                        .filter((q) => {
+                                          const qWeek = q.scheduledWeek || iso(startOfWeek(new Date(q.dueDate)));
+                                          return qWeek === section.weekStartISO && groupKeyFor(q, organize) === groupKey;
+                                        })
+                                        .map((q) => q.id);
+                                      saveGroupOrder(organize, weekStartISO, groupKey, orderIds);
+                                    }
+                                    return next;
+                                  });
+                                  setToast("Reordered within week");
+                                }
                                 setDraggingId(null);
                                 setOverId(null);
-                                setToast("Saved");
                               }}
                               onDragEnd={() => { setDraggingId(null); setOverId(null); }}
                               className={cls("border-b hover:bg-gray-50", dragging && "opacity-60", over && "ring-2 ring-blue-300", finished && "line-through opacity-60")}
@@ -1022,9 +1064,38 @@ export default function PartsPagePrototype() {
                           onDragOver={(e) => { e.preventDefault(); setOverId(p.id); }}
                           onDrop={(e) => {
                             e.preventDefault();
-                            const src = draggingId || e.dataTransfer.getData("text/id"); if (!src) return;
-                            setParts((prev) => reorderWithinGroup(prev, src, p.id, organize, stackWeeks));
-                            setDraggingId(null); setOverId(null); setToast("Saved");
+                            const src = draggingId || e.dataTransfer.getData("text/id"); 
+                            if (!src) return;
+                            
+                            // Check if this is a cross-week drop (different scheduled weeks)
+                            const srcPart = parts.find(part => part.id === src);
+                            const srcWeek = srcPart?.scheduledWeek || (srcPart ? iso(startOfWeek(new Date(srcPart.dueDate))) : null);
+                            const targetWeek = section.weekStartISO;
+                            
+                            if (srcWeek !== targetWeek) {
+                              // Cross-week move: just move to this week
+                              setParts((prev) => {
+                                const updated = movePartToWeek(prev, src, targetWeek);
+                                // Save the moved part to API
+                                const movedPart = updated.find(p => p.id === src);
+                                if (movedPart) {
+                                  fetch('/api/lamination-parts', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(movedPart)
+                                  });
+                                }
+                                return updated;
+                              });
+                              const weekLabel = `Week of ${new Date(targetWeek).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+                              setToast("Part moved to " + weekLabel);
+                            } else {
+                              // Within-week reorder
+                              setParts((prev) => reorderWithinGroup(prev, src, p.id, organize, stackWeeks));
+                              setToast("Reordered within week");
+                            }
+                            setDraggingId(null); 
+                            setOverId(null);
                           }}
                           onDragEnd={() => { setDraggingId(null); setOverId(null); }}
                           className={cls("border-b hover:bg-gray-50", dragging && "opacity-60", over && "ring-2 ring-blue-300", finished && "line-through opacity-60")} style={{ borderLeft: `4px solid ${p.boat.colorHex}` }}>
@@ -1188,9 +1259,18 @@ export default function PartsPagePrototype() {
                         const draggedId = draggingId || e.dataTransfer.getData("text/id");
                         if (!draggedId) return;
                         
-                        const targetWeekStart = iso(section.range.start); // range.start is already the Monday
+                        const targetWeekStart = section.weekStartISO; // Use the exact same ISO string from week section
                         setParts((prev) => {
                           const updated = movePartToWeek(prev, draggedId, targetWeekStart);
+                          // Save the moved part to API
+                          const movedPart = updated.find(p => p.id === draggedId);
+                          if (movedPart) {
+                            fetch('/api/lamination-parts', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(movedPart)
+                            });
+                          }
                           return updated;
                         });
                         setDraggingId(null);
