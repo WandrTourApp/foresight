@@ -1,7 +1,34 @@
 {
   "parts": [
     {
-      "id": "P-1757629334231",
+      "id": "P-1757629314679",
+      "sku": "",
+      "name": "Leaninag posy",
+      "boat": {
+        "id": "B-26-37211",
+        "label": "37211 • 26‑ft",
+        "length": 26,
+        "colorHex": "#f97316",
+        "shipWeek": "TBD"
+      },
+      "lamType": "Infusion",
+      "gelcoat": "Seafoam",
+      "qtyNeeded": 1,
+      "qtyDone": 1,
+      "stage": "Unscheduled",
+      "dueDate": "2025-09-11",
+      "assignee": "",
+      "notes": "c",
+      "history": [
+        {
+          "ts": "2025-09-11",
+          "action": "Part created",
+          "by": "User"
+        }
+      ]
+    },
+    {
+      "id": "P-1757634547814",
       "sku": "",
       "name": "New Part",
       "boat": {
@@ -16,33 +43,6 @@
       "qtyNeeded": 1,
       "qtyDone": 0,
       "stage": "Scheduled",
-      "dueDate": "2025-09-11",
-      "assignee": "",
-      "notes": "",
-      "history": [
-        {
-          "ts": "2025-09-11",
-          "action": "Part created",
-          "by": "User"
-        }
-      ]
-    },
-    {
-      "id": "P-1757629314679",
-      "sku": "",
-      "name": "New Part",
-      "boat": {
-        "id": "B-26-NEW",
-        "label": "NEW • 26-ft",
-        "length": 26,
-        "colorHex": "#22c55e",
-        "shipWeek": "TBD"
-      },
-      "lamType": "Skin",
-      "gelcoat": "White",
-      "qtyNeeded": 1,
-      "qtyDone": 1,
-      "stage": "Unscheduled",
       "dueDate": "2025-09-11",
       "assignee": "",
       "notes": "",
