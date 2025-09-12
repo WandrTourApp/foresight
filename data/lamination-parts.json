@@ -1,82 +1,81 @@
 {
   "parts": [
     {
-      "id": "P-1757629314679",
-      "sku": "",
-      "name": "Leaninag posy",
+      "name": "Hull",
       "boat": {
-        "id": "B-26-37211",
-        "label": "37211 • 26‑ft",
+        "id": "B-26-Johnson",
+        "label": "Johnson • 26‑ft",
         "length": 26,
         "colorHex": "#f97316",
         "shipWeek": "TBD"
       },
-      "lamType": "Infusion",
-      "gelcoat": "Seafoam",
+      "lamType": "Skin",
+      "gelcoat": "Light Blue",
       "qtyNeeded": 1,
       "qtyDone": 1,
       "stage": "Unscheduled",
-      "dueDate": "2025-09-11",
-      "assignee": "",
-      "notes": "c",
-      "history": [
-        {
-          "ts": "2025-09-11",
-          "action": "Part created",
-          "by": "User"
-        }
-      ],
-      "scheduledWeek": "2025-09-15"
-    },
-    {
-      "id": "P-1757634547814",
-      "sku": "",
-      "name": "New Part",
-      "boat": {
-        "id": "B-26-NEW",
-        "label": "NEW • 26-ft",
-        "length": 26,
-        "colorHex": "#22c55e",
-        "shipWeek": "TBD"
-      },
-      "lamType": "Skin",
-      "gelcoat": "White",
-      "qtyNeeded": 1,
-      "qtyDone": 0,
-      "stage": "Scheduled",
-      "dueDate": "2025-09-11",
+      "dueDate": "2025-09-26",
       "assignee": "",
       "notes": "",
+      "scheduledWeek": "2025-09-15",
+      "id": "P-1757695595426",
       "history": [
         {
-          "ts": "2025-09-11",
+          "ts": "2025-09-12T16:46:35.426Z",
           "action": "Part created",
           "by": "User"
         }
       ]
     },
     {
-      "name": "vbnm,",
+      "name": "55g Fishbox",
       "boat": {
-        "id": "B-26-NEW",
-        "label": "NEW • 26-ft",
+        "id": "B-26-Johnson",
+        "label": "Johnson • 26‑ft",
         "length": 26,
-        "colorHex": "#22c55e",
+        "colorHex": "#f97316",
         "shipWeek": "TBD"
       },
-      "lamType": "Skin",
-      "gelcoat": "White",
+      "lamType": "Infusion",
+      "gelcoat": "Dresdin Blue",
       "qtyNeeded": 1,
-      "qtyDone": 0,
-      "stage": "Unscheduled",
-      "dueDate": "2025-09-12",
+      "qtyDone": 1,
+      "stage": "Scheduled",
+      "dueDate": "2025-09-19",
       "assignee": "",
       "notes": "",
       "scheduledWeek": "2025-09-15",
-      "id": "P-1757671796820",
+      "id": "P-1757695648908",
       "history": [
         {
-          "ts": "2025-09-12T10:09:56.820Z",
+          "ts": "2025-09-12T16:47:28.908Z",
+          "action": "Part created",
+          "by": "User"
+        }
+      ]
+    },
+    {
+      "name": "Stringers",
+      "boat": {
+        "id": "B-26-Orme",
+        "label": "Orme • 26‑ft",
+        "length": 26,
+        "colorHex": "#f97316",
+        "shipWeek": "TBD"
+      },
+      "lamType": "Hand Layup",
+      "gelcoat": "N/A",
+      "qtyNeeded": 1,
+      "qtyDone": 1,
+      "stage": "Finishing",
+      "dueDate": "2025-09-19",
+      "assignee": "",
+      "notes": "",
+      "scheduledWeek": "2025-09-15",
+      "id": "P-1757695685804",
+      "history": [
+        {
+          "ts": "2025-09-12T16:48:05.804Z",
           "action": "Part created",
           "by": "User"
         }

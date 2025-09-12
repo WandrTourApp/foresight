@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 const BOAT_COLORS = {
   Johnson: "#ef4444",
@@ -11,17 +11,44 @@ const BOAT_COLORS = {
   "40-23": "#16a34a",
 };
 
-function colorForBoat(boat) {
+function colorForBoat(boat, parts: Part[] = []) {
+  // First try to find color from parts data
+  const part = parts.find(p => p.boat.label.split(' • ')[0] === boat);
+  if (part && part.boat.colorHex) {
+    return part.boat.colorHex;
+  }
+  
+  // Fallback to hardcoded colors
   if (BOAT_COLORS[boat]) return BOAT_COLORS[boat];
+  
+  // Generate color from boat name
   let h = 0;
   for (let i = 0; i < boat.length; i++) h = (h * 31 + boat.charCodeAt(i)) % 360;
   return `hsl(${h}, 65%, 50%)`;
 }
 
+// Types from lamination schedule
+type Stage = "In Mold" | "Out of Mold" | "Cutter" | "Finishing" | "Done";
+type LamType = "Squish" | "Infusion" | "Hand Layup";
+
+type Part = {
+  id: string;
+  name: string;
+  boat: { id: string; label: string; length: 26 | 40; colorHex: string; shipWeek: string };
+  lamType: LamType;
+  gelcoat: string;
+  qtyNeeded: number;
+  qtyDone: number;
+  stage: Stage;
+  dueDate: string;
+  scheduledWeek?: string;
+  assignee?: string;
+  notes?: string;
+};
+
 const GELCOAT_OPTIONS = ["White", "Black", "Blue", "Red", "Gray", "Custom"];
 const PROCESS_OPTIONS = ["Infusion", "Open", "Squish"];
 const ALERT_TYPES = ["Quality Issue", "Delay", "Material Shortage", "Equipment Problem", "Other"];
-const BOAT_LIST = ["Johnson", "Smoak", "King", "Orme", "40-22", "40-23"];
 
 // Generate 4-day work weeks (Mon-Thu only)
 function getWorkWeeks(startDate, numWeeks = 8) {
@@ -60,6 +87,45 @@ function getWorkWeeks(startDate, numWeeks = 8) {
   return weeks;
 }
 
+// Transform lamination parts into weekly cards
+function transformPartsToWeeklyCards(parts: Part[], weeks: any[]) {
+  const cards: any[] = [];
+  
+  parts.forEach((part, index) => {
+    if (!part.scheduledWeek) return;
+    
+    // Find which week this part belongs to
+    const scheduledDate = new Date(part.scheduledWeek);
+    const weekIndex = weeks.findIndex(week => {
+      const weekStart = week.startDate;
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6); // Full week
+      return scheduledDate >= weekStart && scheduledDate <= weekEnd;
+    });
+    
+    if (weekIndex === -1) return; // Part not in visible weeks
+    
+    // Assign to a day within the week (distribute evenly or use specific logic)
+    const dayIndex = index % 4; // Distribute across Mon-Thu
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu'];
+    
+    cards.push({
+      id: part.id,
+      boat: part.boat.label.split(' • ')[0], // Extract boat name
+      part: part.name,
+      gelcoat: part.gelcoat,
+      sprayDate: part.dueDate,
+      process: part.lamType === "Squish" ? "Squish" : 
+               part.lamType === "Infusion" ? "Infusion" : "Open", // Map Hand Layup to Open
+      weekNumber: weekIndex + 1,
+      day: dayLabels[dayIndex],
+      dayNote: part.notes || ""
+    });
+  });
+  
+  return cards;
+}
+
 export default function LaminationDashboard() {
   const [showScheduled, setShowScheduled] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
@@ -72,47 +138,48 @@ export default function LaminationDashboard() {
   // Generate weeks starting from current date
   const weeks = useMemo(() => getWorkWeeks(new Date('2025-02-10')), []);
 
-  // Sample weekly cards data
-  const [weeklyCards, setWeeklyCards] = useState([
-    {
-      id: 1,
-      boat: "Johnson",
-      part: "Console liner",
-      gelcoat: "White",
-      sprayDate: "2025-02-10",
-      process: "Open",
-      weekNumber: 1,
-      day: "Mon",
-      dayNote: "Prep mold surface"
-    },
-    {
-      id: 2,
-      boat: "Smoak",
-      part: "Transom mold",
-      gelcoat: "Blue",
-      sprayDate: "2025-02-11",
-      process: "Infusion",
-      weekNumber: 1,
-      day: "Tue",
-      dayNote: "Setup infusion lines"
-    },
-    {
-      id: 3,
-      boat: "King",
-      part: "Stringer panels",
-      gelcoat: "White",
-      sprayDate: "2025-02-12",
-      process: "Squish",
-      weekNumber: 1,
-      day: "Wed",
-      dayNote: "Press and cure"
-    }
-  ]);
+  // Parts data from lamination schedule
+  const [parts, setParts] = useState<Part[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Transform parts into weekly cards
+  const weeklyCards = useMemo(() => {
+    return transformPartsToWeeklyCards(parts, weeks);
+  }, [parts, weeks]);
+
+  // Dynamic boat list from loaded parts
+  const boatList = useMemo(() => {
+    const boats = new Set(parts.map(part => part.boat.label.split(' • ')[0]));
+    return Array.from(boats);
+  }, [parts]);
 
   const [alerts, setAlerts] = useState([
     { id: 1, type: "Quality Issue", text: "Gelcoat bubble on Johnson console", boat: "Johnson" },
     { id: 2, type: "Delay", text: "Material delivery delayed", boat: "Smoak" }
   ]);
+
+  // Load parts from API
+  const loadPartsFromAPI = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/lamination-parts');
+      if (response.ok) {
+        const data = await response.json();
+        setParts(data.parts || []);
+      } else {
+        console.error('Failed to load parts:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Failed to load parts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load data on mount
+  useEffect(() => {
+    loadPartsFromAPI();
+  }, []);
 
   // Timeline data matching Production Schedule
   const timelineData = {
@@ -168,11 +235,23 @@ export default function LaminationDashboard() {
     e.preventDefault();
     if (!dragging) return;
 
-    setWeeklyCards(prev => prev.map(card => 
-      card.id === dragging.id 
-        ? { ...card, weekNumber: targetWeekNumber, day: targetDay }
-        : card
+    // Update the corresponding part's scheduledWeek based on the new week/day
+    const targetWeek = weeks[targetWeekNumber - 1];
+    if (!targetWeek) return;
+    
+    const targetDayIndex = ['Mon', 'Tue', 'Wed', 'Thu'].indexOf(targetDay);
+    if (targetDayIndex === -1) return;
+    
+    const targetDate = targetWeek.days[targetDayIndex]?.dateStr;
+    if (!targetDate) return;
+
+    // Update the part data
+    setParts(prev => prev.map(part => 
+      part.id === dragging.id 
+        ? { ...part, scheduledWeek: targetDate }
+        : part
     ));
+    
     setDragging(null);
   }
 
@@ -203,7 +282,7 @@ export default function LaminationDashboard() {
   }
 
   function TimelineBar({ label, data, isScheduled = false }) {
-    const boatColor = colorForBoat(data.boat);
+    const boatColor = colorForBoat(data.boat, parts);
     const barWidth = data.weeks * 120; // 120px per week
     
     return (
@@ -308,7 +387,10 @@ export default function LaminationDashboard() {
         
         {/* Weekly Schedule Cards - Left Column */}
         <div className="xl:col-span-2 bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Weekly Schedule</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Weekly Schedule</h2>
+            {loading && <div className="text-sm text-gray-500">Loading parts...</div>}
+          </div>
           
           <div className="overflow-y-auto max-h-[600px]">
             {weeks.slice(0, 4).map(week => (
@@ -334,7 +416,7 @@ export default function LaminationDashboard() {
                           <div
                             key={card.id}
                             className="bg-white border border-gray-200 rounded-lg p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow"
-                            style={{ borderLeft: `4px solid ${colorForBoat(card.boat)}` }}
+                            style={{ borderLeft: `4px solid ${colorForBoat(card.boat, parts)}` }}
                             draggable
                             onDragStart={(e) => handleDragStart(e, card)}
                             onClick={() => handleCardClick(card)}
@@ -405,7 +487,7 @@ export default function LaminationDashboard() {
                         className="text-sm border rounded px-2 py-1 mb-2 w-full"
                       >
                         <option value="">Select boat...</option>
-                        {BOAT_LIST.map(boat => (
+                        {boatList.map(boat => (
                           <option key={boat} value={boat}>{boat}</option>
                         ))}
                       </select>

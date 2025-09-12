@@ -94,7 +94,7 @@ const mk40 = (boat) => [
 
 export default function TimelineWithAddBoat() {
   const bars = useAllBars();
-  const { addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar } = useScheduleStore();
+  const { addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar, deleteBars } = useScheduleStore();
   const hasLoadedRef = React.useRef(false);
   const [isSaving, setIsSaving] = React.useState(false);
   
@@ -180,6 +180,9 @@ export default function TimelineWithAddBoat() {
   // Enhanced drag and drop
   const [draggingId, setDraggingId] = React.useState(null);
   const [dragOverInfo, setDragOverInfo] = React.useState(null);
+  
+  // 3-dot menu for boats
+  const [openMenuId, setOpenMenuId] = React.useState(null);
 
   React.useEffect(() => {
     const onKey = (e) => {
@@ -198,6 +201,20 @@ export default function TimelineWithAddBoat() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, runs, updateBar]);
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = () => {
+      if (openMenuId) {
+        setOpenMenuId(null);
+      }
+    };
+    
+    if (openMenuId) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenuId]);
 
   const deleteWeekFromRun = (run, weekIso) => {
     const startIdx = weekIndex.get(run.startIso) ?? -1;
@@ -327,9 +344,17 @@ export default function TimelineWithAddBoat() {
   };
 
   const selectedRun = selected ? runs.find(r => r.id === selected.runId) : null;
+  
+  // Delete all bars for a boat
+  const handleDeleteBoat = (boatName) => {
+    if (confirm(`Are you sure you want to delete all departments for boat "${boatName}"? This cannot be undone.`)) {
+      deleteBars(boatName);
+      setOpenMenuId(null);
+    }
+  };
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-2 space-y-2">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Production Timeline</h1>
         <div className="flex items-center gap-2">
@@ -349,13 +374,13 @@ export default function TimelineWithAddBoat() {
         </div>
       </div>
       
-      <div className="overflow-auto max-h-screen">
-        <table className="min-w-[1200px] w-full border">
+      <div className="overflow-auto max-h-[calc(100vh-120px)] border border-gray-300">
+        <table className="min-w-[1200px] w-full border-collapse">
           <thead className="bg-neutral-50">
             <tr>
-              <th className="sticky left-0 top-0 bg-neutral-50 border-r px-2 py-1 text-left w-44" style={{ zIndex: 1000, backgroundColor: 'rgb(250 250 250)' }}>Department / Actual</th>
+              <th className="sticky left-0 top-0 bg-neutral-50 border border-gray-300 px-2 py-1 text-left w-44" style={{ zIndex: 1000, backgroundColor: 'rgb(250 250 250)' }}>Department / Actual</th>
               {weeks.map(w => (
-                <th key={w} className="sticky top-0 border px-2 py-1 text-center text-xs whitespace-nowrap bg-neutral-50" style={{ minWidth: '200px', zIndex: 999, backgroundColor: 'rgb(250 250 250)' }}>
+                <th key={w} className="sticky top-0 border border-gray-300 px-2 py-1 text-center text-xs whitespace-nowrap bg-neutral-50" style={{ minWidth: '200px', zIndex: 999, backgroundColor: 'rgb(250 250 250)' }}>
                   {new Date(w).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
                 </th>
               ))}
@@ -389,7 +414,7 @@ export default function TimelineWithAddBoat() {
 
               return (
                 <tr key={dept}>
-                  <th className="sticky left-0 bg-white border border-r px-2 py-1 text-left capitalize" style={{ zIndex: 999, backgroundColor: 'white' }}>{dept}</th>
+                  <th className="sticky left-0 bg-white border border-gray-300 px-2 py-1 text-left capitalize" style={{ zIndex: 999, backgroundColor: 'white' }}>{dept}</th>
                   <td className="p-0 border" colSpan={weeks.length}>
                     <div className="relative" style={{ minHeight: `${maxBarHeight}px` }}>
                     
@@ -451,7 +476,59 @@ export default function TimelineWithAddBoat() {
                           }}
                           title={`${r.boat} — ${r.dept} (${r.weeks}w) - Drag to move`}
                         >
-                          <div className="truncate text-center w-full">{r.boat} <span className="opacity-60 text-[10px]">({r.model})</span></div>
+                          <div className="flex items-center justify-between w-full">
+                            <div className="truncate text-center flex-1">{r.boat} <span className="opacity-60 text-[10px]">({r.model})</span></div>
+                            <div className="relative" style={{ zIndex: 100 }}>
+                              <button
+                                className="p-1 hover:bg-gray-200 rounded text-gray-600 hover:text-gray-800"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setOpenMenuId(openMenuId === r.id ? null : r.id);
+                                }}
+                              >
+                                ⋯
+                              </button>
+                              {openMenuId === r.id && (
+                                <div className="absolute right-0 mt-1 w-28 bg-white border border-gray-200 rounded-md shadow-lg z-[1000]">
+                                  <button
+                                    className="w-full px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleDeleteBoat(r.boat);
+                                    }}
+                                  >
+                                    🗑️ Delete Boat
+                                  </button>
+                                  <button
+                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      // TODO: Implement split week functionality
+                                      console.log('Split week for bar:', r.id);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    ✂️ Split Week
+                                  </button>
+                                  <button
+                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      // TODO: Implement merge week functionality
+                                      console.log('Merge week for bar:', r.id);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    📎 Merge Week
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                           
                           {/* Notes display */}
                           <div className="text-xs text-gray-700 mt-1" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)`, overflow: 'visible' }}>
@@ -467,11 +544,12 @@ export default function TimelineWithAddBoat() {
                             })}
                           </div>
                           
-                          {/* Week selection buttons */}
+                          {/* Week selection buttons - exclude area under 3-dot menu */}
                           <div className="absolute inset-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)` }}>
                             {Array.from({ length: span }).map((_, i) => {
                               const iso = isoAddWeeks(r.startIso, i);
                               const active = selected && selected.runId === r.id && selected.weekIso === iso;
+                              const isFirstWeek = i === 0;
                               return (
                                 <button
                                   key={i}
@@ -483,7 +561,11 @@ export default function TimelineWithAddBoat() {
                                     setStatusOpen(true); 
                                   }}
                                   className={`border-l first:border-l-0 border-neutral-300/30 focus:outline-none hover:bg-blue-50/60 ${active ? 'bg-blue-200/70' : ''}`}
-                                  style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
+                                  style={{ 
+                                    pointerEvents: isDragging ? 'none' : 'auto',
+                                    // For first week, exclude the right 32px where 3-dot menu is
+                                    clipPath: isFirstWeek ? 'polygon(0 0, calc(100% - 32px) 0, calc(100% - 32px) 100%, 0 100%)' : 'none'
+                                  }}
                                   aria-label={`Select week ${iso}`}
                                 />
                               );

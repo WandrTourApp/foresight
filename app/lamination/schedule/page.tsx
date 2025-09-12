@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useAllBars, useScheduleStore } from '../../lib/schedule-store';
 
 // ------------------------------------------------------------
 // Foresight ERP — Parts Page Prototype (React + Tailwind)
@@ -12,14 +13,13 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 
 // Types
 export type Stage =
-  | "Unscheduled"
-  | "Scheduled"
   | "In Mold"
-  | "Pulled"
+  | "Out of Mold"
   | "Cutter"
-  | "Finished";
+  | "Finishing"
+  | "Done";
 
-export type LamType = "Skin" | "Core" | "Infusion" | "Hand Layup";
+export type LamType = "Squish" | "Infusion" | "Hand Layup";
 
 export type Part = {
   id: string;
@@ -37,14 +37,13 @@ export type Part = {
   history?: Array<{ ts: string; action: string; by: string }>;
 };
 
-// Stage → color mapping (match Timeline stack colors)
+// Stage → color mapping (red to green progression)
 const STAGE_COLORS: Record<Stage, string> = {
-  Unscheduled: "bg-gray-200 text-gray-900",
-  Scheduled: "bg-blue-200 text-blue-900",
-  "In Mold": "bg-amber-200 text-amber-900",
-  Pulled: "bg-lime-200 text-lime-900",
-  Cutter: "bg-violet-200 text-violet-900",
-  Finished: "bg-emerald-200 text-emerald-900",
+  "In Mold": "bg-red-300 text-red-900",
+  "Out of Mold": "bg-orange-300 text-orange-900",
+  Cutter: "bg-yellow-300 text-yellow-900",
+  Finishing: "bg-lime-300 text-lime-900",
+  Done: "bg-green-400 text-green-900",
 };
 
 // Utility
@@ -217,25 +216,26 @@ function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
 }
 
 // New Part Form Dialog
-function NewPartForm({ isOpen, onClose, onSubmit }: { 
+function NewPartForm({ isOpen, onClose, onSubmit, availableBoats }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onSubmit: (part: Omit<Part, 'id' | 'history'>) => void; 
+  availableBoats: Array<{ id: string; label: string; length: 26 | 40; colorHex: string; shipWeek: string }>;
 }) {
   const [formData, setFormData] = useState<Omit<Part, 'id' | 'history'>>({
     name: '',
-    boat: { 
+    boat: availableBoats[0] || { 
       id: 'B-26-NEW', 
       label: 'NEW • 26-ft', 
       length: 26, 
       colorHex: '#22c55e',
       shipWeek: 'TBD'
     },
-    lamType: 'Skin',
+    lamType: 'Squish',
     gelcoat: 'White',
     qtyNeeded: 1,
     qtyDone: 0,
-    stage: 'Unscheduled',
+    stage: 'In Mold',
     dueDate: iso(new Date()),
     assignee: '',
     notes: '',
@@ -253,18 +253,18 @@ function NewPartForm({ isOpen, onClose, onSubmit }: {
     // Reset form
     setFormData({
       name: '',
-      boat: { 
+      boat: availableBoats[0] || { 
         id: 'B-26-NEW', 
         label: 'NEW • 26-ft', 
         length: 26, 
         colorHex: '#22c55e',
         shipWeek: 'TBD'
       },
-      lamType: 'Skin',
+      lamType: 'Squish',
       gelcoat: 'White',
       qtyNeeded: 1,
       qtyDone: 0,
-      stage: 'Unscheduled',
+      stage: 'In Mold',
       dueDate: iso(new Date()),
       assignee: '',
       notes: '',
@@ -303,23 +303,16 @@ function NewPartForm({ isOpen, onClose, onSubmit }: {
                 <select
                   value={formData.boat.id}
                   onChange={(e) => {
-                    const isBoat40 = e.target.value.includes('40');
-                    const newBoat = {
-                      id: e.target.value,
-                      label: isBoat40 ? `${e.target.value.split('-')[2]} • 40‑ft` : `${e.target.value.split('-')[2]} • 26‑ft`,
-                      length: isBoat40 ? 40 : 26,
-                      colorHex: isBoat40 ? "#0ea5e9" : "#f97316",
-                      shipWeek: "TBD"
-                    };
-                    setFormData({...formData, boat: newBoat});
+                    const selectedBoat = availableBoats.find(boat => boat.id === e.target.value);
+                    if (selectedBoat) {
+                      setFormData({...formData, boat: selectedBoat});
+                    }
                   }}
                   className="w-full border rounded-md px-3 py-2"
                 >
-                  <option value="B-26-NEW">NEW • 26‑ft</option>
-                  <option value="B-26-37211">37211 • 26‑ft</option>
-                  <option value="B-40-48881">48881 • 40‑ft</option>
-                  <option value="B-26-12345">12345 • 26‑ft</option>
-                  <option value="B-40-67890">67890 • 40‑ft</option>
+                  {availableBoats.map(boat => (
+                    <option key={boat.id} value={boat.id}>{boat.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -329,8 +322,7 @@ function NewPartForm({ isOpen, onClose, onSubmit }: {
                   onChange={(e) => setFormData({...formData, lamType: e.target.value as LamType})}
                   className="w-full border rounded-md px-3 py-2"
                 >
-                  <option value="Skin">Skin</option>
-                  <option value="Core">Core</option>
+                  <option value="Squish">Squish</option>
                   <option value="Infusion">Infusion</option>
                   <option value="Hand Layup">Hand Layup</option>
                 </select>
@@ -360,7 +352,7 @@ function NewPartForm({ isOpen, onClose, onSubmit }: {
                   <option value="In Mold">In Mold</option>
                   <option value="Pulled">Pulled</option>
                   <option value="Cutter">Cutter</option>
-                  <option value="Finished">Finished</option>
+                  <option value="Done">Done</option>
                 </select>
               </div>
             </div>
@@ -475,21 +467,21 @@ function movePartToWeek(parts: Part[], partId: string, targetWeekStart: string):
 // Runtime tests (console)
 function runDevTests() {
   const results: Array<{ name: string; pass: boolean; detail?: string }> = [];
-  const stageOpts = ["All", "Unscheduled", "Scheduled", "In Mold", "Pulled", "Cutter", "Finished"] as const;
-  const lamOpts = ["All", "Skin", "Core", "Infusion", "Hand Layup"] as const;
+  const stageOpts = ["All", "In Mold", "Out of Mold", "Cutter", "Finishing", "Done"] as const;
+  const lamOpts = ["All", "Squish", "Infusion", "Hand Layup"] as const;
   const gelOpts = ["All", "Snow White", "Seafoam", "Shark Grey"] as const;
   const dueOpts = ["All", "This Week", "Next Week", "Overdue"] as const;
   results.push({ name: "Stage options length", pass: stageOpts.length === 7 });
-  results.push({ name: "Lam options length", pass: lamOpts.length === 5 });
+  results.push({ name: "Lam options length", pass: lamOpts.length === 4 });
   results.push({ name: "Gel options length", pass: gelOpts.length === 4 });
   results.push({ name: "Due options length", pass: dueOpts.length === 4 });
-  const stages: Stage[] = ["Unscheduled", "Scheduled", "In Mold", "Pulled", "Cutter", "Finished"];
+  const stages: Stage[] = ["In Mold", "Out of Mold", "Cutter", "Finishing", "Done"];
   results.push({ name: "Stage color mapping complete", pass: stages.every((s) => STAGE_COLORS[s] !== undefined) });
-  const sample: Part = { id: "t1", name: "Test", boat: { id: "B", label: "B", length: 26, colorHex: "#000", shipWeek: "WK" }, lamType: "Skin", gelcoat: "Snow White", qtyNeeded: 3, qtyDone: 1, stage: "Pulled", dueDate: iso(new Date()) };
+  const sample: Part = { id: "t1", name: "Test", boat: { id: "B", label: "B", length: 26, colorHex: "#000", shipWeek: "WK" }, lamType: "Squish", gelcoat: "Snow White", qtyNeeded: 3, qtyDone: 1, stage: "Pulled", dueDate: iso(new Date()) };
   const canFinish = !(sample.qtyDone < sample.qtyNeeded);
   results.push({ name: "Finish guard blocks incomplete qty", pass: !canFinish });
   results.push({ name: "groupKey Boat", pass: groupKeyFor(sample, "Boat") === "B" });
-  results.push({ name: "groupKey Lamination", pass: groupKeyFor(sample, "Lamination Type") === "Skin" });
+  results.push({ name: "groupKey Lamination", pass: groupKeyFor(sample, "Lamination Type") === "Squish" });
   const wk = weekBucketLabel(sample.dueDate);
   results.push({ name: "groupKey Due Week", pass: groupKeyFor(sample, "Due Week") === wk });
   const a: Part = { ...sample, id: "A", boat: { ...sample.boat, id: "B1" } };
@@ -502,9 +494,9 @@ function runDevTests() {
   const res2 = reorderWithinGroup(arr2, "C", "A", "Boat", true);
   results.push({ name: "DnD allowed within same boat", pass: res2[0].id === "C" && res2[1].id === "A" });
   // Lamination type reordering within same lam group
-  const l1: Part = { ...sample, id: "L1", lamType: "Skin" };
-  const l2: Part = { ...sample, id: "L2", lamType: "Skin" };
-  const l3: Part = { ...sample, id: "L3", lamType: "Core" };
+  const l1: Part = { ...sample, id: "L1", lamType: "Squish" };
+  const l2: Part = { ...sample, id: "L2", lamType: "Squish" };
+  const l3: Part = { ...sample, id: "L3", lamType: "Infusion" };
   const larr = [l1, l2, l3];
   const lres = reorderWithinGroup(larr, "L2", "L1", "Lamination Type", true);
   results.push({ name: "DnD allowed within same lam type", pass: lres[0].id === "L2" && lres[1].id === "L1" });
@@ -532,6 +524,15 @@ function runDevTests() {
   }
 }
 
+// Stage cycling function
+const STAGE_ORDER: Stage[] = ["In Mold", "Out of Mold", "Cutter", "Finishing", "Done"];
+
+function getNextStage(currentStage: Stage): Stage {
+  const currentIndex = STAGE_ORDER.indexOf(currentStage);
+  const nextIndex = (currentIndex + 1) % STAGE_ORDER.length;
+  return STAGE_ORDER[nextIndex];
+}
+
 // Main component
 export default function PartsPagePrototype() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
@@ -546,6 +547,64 @@ export default function PartsPagePrototype() {
   const [stackCount, setStackCount] = useState<number>(3);
   const [showNewPartForm, setShowNewPartForm] = useState<boolean>(false);
   const [editingParts, setEditingParts] = useState<Set<string>>(new Set());
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Get boat data from production schedule
+  const scheduleBars = useAllBars();
+  const { setBars } = useScheduleStore();
+
+  // Load schedule data if not already loaded
+  useEffect(() => {
+    if (scheduleBars.length === 0) {
+      const loadScheduleData = async () => {
+        try {
+          const response = await fetch('/api/schedule-store');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.bars && data.bars.length > 0) {
+              setBars(data.bars);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load schedule data:', error);
+        }
+      };
+      
+      loadScheduleData();
+    }
+  }, [scheduleBars.length, setBars]);
+  const availableBoats = useMemo(() => {
+    const boatMap = new Map();
+    
+    scheduleBars.forEach(bar => {
+      if (bar.boat && !boatMap.has(bar.boat)) {
+        // Determine model from bar model or boat name
+        const model = bar.model === '40' ? 40 : 26;
+        const colorHex = model === 40 ? "#0ea5e9" : "#f97316";
+        
+        boatMap.set(bar.boat, {
+          id: `B-${model}-${bar.boat}`,
+          label: `${bar.boat} • ${model}‑ft`,
+          length: model,
+          colorHex: colorHex,
+          shipWeek: "TBD"
+        });
+      }
+    });
+    
+    // Add fallback boats if no production schedule data
+    if (boatMap.size === 0) {
+      boatMap.set("NEW", {
+        id: 'B-26-NEW', 
+        label: 'NEW • 26‑ft', 
+        length: 26, 
+        colorHex: '#22c55e',
+        shipWeek: 'TBD'
+      });
+    }
+    
+    return Array.from(boatMap.values());
+  }, [scheduleBars]);
 
   // Load parts from API on mount
   useEffect(() => { 
@@ -583,6 +642,20 @@ export default function PartsPagePrototype() {
     }
   };
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openMenuId) {
+        setOpenMenuId(null);
+      }
+    };
+    
+    if (openMenuId) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenuId]);
+
   // Add new part from form
   const addNewPart = (partData: Omit<Part, 'id' | 'history'>) => {
     const newPart: Part = {
@@ -615,7 +688,7 @@ export default function PartsPagePrototype() {
         if (filters.dueRange === "This Week" && !(due >= curWeek.start && due <= curWeek.end)) return false;
         if (filters.dueRange === "Next Week" && !(due >= nextWeek.start && due <= nextWeek.end)) return false;
       }
-      if (filters.hideCompleted && p.stage === "Finished") return false;
+      if (filters.hideCompleted && p.stage === "Done") return false;
       return true;
     });
   }, [filters, parts]);
@@ -665,12 +738,12 @@ export default function PartsPagePrototype() {
   const visibleParts = useMemo(() => weekSections.flatMap((s) => s.items), [weekSections]);
   const stats = useMemo(() => {
     const total = visibleParts.length;
-    const finished = visibleParts.filter((p) => p.stage === "Finished").length;
+    const finished = visibleParts.filter((p) => p.stage === "Done").length;
     const blockers = visibleParts.filter((p) => p.notes?.toLowerCase().includes("hold")).length;
     const dueSoon = visibleParts.filter((p) => {
       const d = new Date(p.dueDate); const now = new Date();
       const diff = (d.getTime() - now.getTime()) / 86400000; return diff >= 0 && diff <= 7; }).length;
-    const overdue = visibleParts.filter((p) => new Date(p.dueDate) < new Date() && p.stage !== "Finished").length;
+    const overdue = visibleParts.filter((p) => new Date(p.dueDate) < new Date() && p.stage !== "Done").length;
     return { total, pct: total ? finished / total : 0, blockers, dueSoon, overdue };
   }, [visibleParts]);
 
@@ -716,6 +789,36 @@ export default function PartsPagePrototype() {
         console.error('Failed to save part:', error);
         setToast("Failed to save");
       }
+    }
+  }, []);
+
+  // Delete part function
+  const deletePart = useCallback(async (id: string, partName: string) => {
+    if (!confirm(`Are you sure you want to delete "${partName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/lamination-parts?id=${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        // Remove from local state
+        setParts((prev) => prev.filter((p) => p.id !== id));
+        // Remove from editing set if it was being edited
+        setEditingParts((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
+        setToast("Part deleted");
+      } else {
+        setToast("Failed to delete part");
+      }
+    } catch (error) {
+      console.error('Failed to delete part:', error);
+      setToast("Failed to delete part");
     }
   }, []);
 
@@ -783,11 +886,11 @@ export default function PartsPagePrototype() {
           </div>
           <div className="flex flex-col">
             <label className="text-xs text-gray-500 mb-1">Status</label>
-            <select className="border rounded-md px-2 py-2 text-sm" value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value as Filters["stage"] })}>{(["All", "Unscheduled", "Scheduled", "In Mold", "Pulled", "Cutter", "Finished"] as const).map((opt) => (<option key={opt} value={opt}>{opt}</option>))}</select>
+            <select className="border rounded-md px-2 py-2 text-sm" value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value as Filters["stage"] })}>{(["All", "In Mold", "Out of Mold", "Cutter", "Finishing", "Done"] as const).map((opt) => (<option key={opt} value={opt}>{opt}</option>))}</select>
           </div>
           <div className="flex flex-col">
             <label className="text-xs text-gray-500 mb-1">Lamination Type</label>
-            <select className="border rounded-md px-2 py-2 text-sm" value={filters.lam} onChange={(e) => setFilters({ ...filters, lam: e.target.value as Filters["lam"] })}>{(["All", "Skin", "Core", "Infusion", "Hand Layup"] as const).map((opt) => (<option key={opt} value={opt}>{opt}</option>))}</select>
+            <select className="border rounded-md px-2 py-2 text-sm" value={filters.lam} onChange={(e) => setFilters({ ...filters, lam: e.target.value as Filters["lam"] })}>{(["All", "Squish", "Infusion", "Hand Layup"] as const).map((opt) => (<option key={opt} value={opt}>{opt}</option>))}</select>
           </div>
           <div className="flex flex-col">
             <label className="text-xs text-gray-500 mb-1">Gelcoat</label>
@@ -903,8 +1006,8 @@ export default function PartsPagePrototype() {
                         </tr>
 
                         {rows.map((p) => {
-                          const overdue = new Date(p.dueDate) < new Date() && p.stage !== "Finished";
-                          const finished = p.stage === "Finished";
+                          const overdue = new Date(p.dueDate) < new Date() && p.stage !== "Done";
+                          const finished = p.stage === "Done";
                           const dragging = draggingId === p.id;
                           const over = overId === p.id;
                           const isEditing = editingParts.has(p.id);
@@ -943,7 +1046,9 @@ export default function PartsPagePrototype() {
                                 } else {
                                   // Within-week reorder
                                   setParts((prev) => {
-                                    const next = reorderWithinGroup(prev, src, p.id, organize, stackWeeks);
+                                    // For boat view, allow reordering within boat regardless of week constraints
+                                    const enforceSameWeek = organize === "Boat" ? false : stackWeeks;
+                                    const next = reorderWithinGroup(prev, src, p.id, organize, enforceSameWeek);
                                     // Persist new order for this (view, week, group)
                                     if (organize === "Boat" || organize === "Lamination Type") {
                                       const orderIds = next
@@ -966,35 +1071,93 @@ export default function PartsPagePrototype() {
                               style={{ borderLeft: `4px solid ${p.boat.colorHex}` }}
                             >
                               <td className="p-2 align-middle">
-                                <button className="text-left" onClick={() => setOpen(p)}>
-                                  <div className="font-medium flex items-center gap-2">
-                                    <span>{p.name}</span>
-                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: p.boat.colorHex }}>
-                                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.boat.colorHex }} />
-                                      {p.boat.length}‑ft
-                                    </span>
+                                {isEditing ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <input 
+                                        className="font-medium border rounded px-2 py-1 min-w-0 flex-1" 
+                                        value={p.name} 
+                                        onChange={(e) => updatePart(p.id, { name: e.target.value })}
+                                        placeholder="Part name"
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <select 
+                                        className="text-xs border rounded px-2 py-1 text-gray-600"
+                                        value={p.boat.id}
+                                        onChange={(e) => {
+                                          const selectedBoat = availableBoats.find(boat => boat.id === e.target.value);
+                                          if (selectedBoat) {
+                                            updatePart(p.id, { boat: selectedBoat });
+                                          }
+                                        }}
+                                      >
+                                        {availableBoats.map(boat => (
+                                          <option key={boat.id} value={boat.id}>{boat.label}</option>
+                                        ))}
+                                      </select>
+                                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: p.boat.colorHex }}>
+                                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.boat.colorHex }} />
+                                        {p.boat.length}‑ft
+                                      </span>
+                                      <button className="text-xs text-blue-600 hover:text-blue-800" onClick={() => setOpen(p)}>
+                                        Details →
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-gray-500">Boat: {p.boat.label}</div>
-                                </button>
+                                ) : (
+                                  <button className="text-left" onClick={() => setOpen(p)}>
+                                    <div className="font-medium flex items-center gap-2">
+                                      <span>{p.name}</span>
+                                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: p.boat.colorHex }}>
+                                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.boat.colorHex }} />
+                                        {p.boat.length}‑ft
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-gray-500">Boat: {p.boat.label}</div>
+                                  </button>
+                                )}
                               </td>
-                              <td className="p-2 align-middle">{p.lamType}</td>
-                              <td className="p-2 align-middle">{p.gelcoat}</td>
                               <td className="p-2 align-middle">
                                 {isEditing ? (
-                                  <select className={cls("rounded-md px-2 py-1 border font-medium", STAGE_COLORS[p.stage], finished && "opacity-70")} value={p.stage}
-                                    onChange={(e) => { const next = e.target.value as Stage; if (next === "Finished" && p.qtyDone < p.qtyNeeded) { setToast("Finish blocked: qty not complete"); return; } updatePart(p.id, { stage: next }); }}>
-                                    {(["Unscheduled", "Scheduled", "In Mold", "Pulled", "Cutter", "Finished"] as Stage[]).map((s) => (<option key={s} value={s}>{s}</option>))}
+                                  <select 
+                                    className="border rounded px-2 py-1 text-sm"
+                                    value={p.lamType}
+                                    onChange={(e) => updatePart(p.id, { lamType: e.target.value as LamType })}
+                                  >
+                                    <option value="Squish">Squish</option>
+                                    <option value="Infusion">Infusion</option>
+                                    <option value="Hand Layup">Hand Layup</option>
                                   </select>
                                 ) : (
-                                  <span className={cls("inline-flex items-center px-2 py-1 rounded-md text-xs font-medium", STAGE_COLORS[p.stage])}>{p.stage}</span>
+                                  <span className="text-sm">{p.lamType}</span>
                                 )}
+                              </td>
+                              <td className="p-2 align-middle">{p.gelcoat}</td>
+                              <td className="p-2 align-middle">
+                                <button 
+                                  className={cls("rounded-md px-2 py-1 border font-medium hover:opacity-80 transition-opacity", STAGE_COLORS[p.stage], finished && "opacity-70")}
+                                  onClick={() => {
+                                    const next = getNextStage(p.stage);
+                                    if (next === "Done" && p.qtyDone < p.qtyNeeded) {
+                                      setToast("Finish blocked: qty not complete");
+                                      return;
+                                    }
+                                    updatePart(p.id, { stage: next });
+                                  }}
+                                  title="Click to advance to next stage"
+                                >
+                                  {p.stage}
+                                </button>
                               </td>
                               <td className="p-2 align-middle text-right">
                                 {isEditing ? (
                                   <div className="inline-flex items-center gap-1">
                                     <input type="number" min={0} max={p.qtyNeeded} value={p.qtyDone} className="w-16 border rounded-md px-2 py-1 text-right"
                                       onChange={(e) => { const v = Math.max(0, Math.min(Number(e.target.value || 0), p.qtyNeeded)); updatePart(p.id, { qtyDone: v }); }} />
-                                    <span className="text-gray-400">/ {p.qtyNeeded}</span>
+                                    <span className="text-gray-400">/</span>
+                                    <input type="number" min={1} value={p.qtyNeeded} className="w-16 border rounded-md px-2 py-1 text-right ml-1"
+                                      onChange={(e) => { const v = Math.max(1, Number(e.target.value || 1)); updatePart(p.id, { qtyNeeded: v, qtyDone: Math.min(p.qtyDone, v) }); }} />
                                   </div>
                                 ) : (
                                   <span className="text-sm">{p.qtyDone} / {p.qtyNeeded}</span>
@@ -1028,20 +1191,45 @@ export default function PartsPagePrototype() {
                                 )}
                               </td>
                               <td className="p-2 align-middle">
-                                <button
-                                  className={`px-2 py-1 text-xs rounded ${isEditing ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                                  onClick={() => {
-                                    const newEditingParts = new Set(editingParts);
-                                    if (isEditing) {
-                                      newEditingParts.delete(p.id);
-                                    } else {
-                                      newEditingParts.add(p.id);
-                                    }
-                                    setEditingParts(newEditingParts);
-                                  }}
-                                >
-                                  {isEditing ? '✓ Save' : '✏️ Edit'}
-                                </button>
+                                <div className="relative">
+                                  <button
+                                    className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenMenuId(openMenuId === p.id ? null : p.id);
+                                    }}
+                                  >
+                                    ⋯
+                                  </button>
+                                  {openMenuId === p.id && (
+                                    <div className="absolute right-0 mt-1 w-24 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                      <button
+                                        className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-50 ${isEditing ? 'text-green-700' : 'text-gray-700'}`}
+                                        onClick={() => {
+                                          const newEditingParts = new Set(editingParts);
+                                          if (isEditing) {
+                                            newEditingParts.delete(p.id);
+                                          } else {
+                                            newEditingParts.add(p.id);
+                                          }
+                                          setEditingParts(newEditingParts);
+                                          setOpenMenuId(null);
+                                        }}
+                                      >
+                                        {isEditing ? '✓ Save' : '✏️ Edit'}
+                                      </button>
+                                      <button 
+                                        className="w-full px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
+                                        onClick={() => {
+                                          deletePart(p.id, p.name);
+                                          setOpenMenuId(null);
+                                        }}
+                                      >
+                                        🗑️ Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1053,8 +1241,8 @@ export default function PartsPagePrototype() {
                   {organize === "None" && (() => {
                     const rows = applySavedOrder(section.items, "Boat", weekStartISO, "ALL"); // no real grouping, keep natural order
                     return rows.map((p) => {
-                      const overdue = new Date(p.dueDate) < new Date() && p.stage !== "Finished";
-                      const finished = p.stage === "Finished";
+                      const overdue = new Date(p.dueDate) < new Date() && p.stage !== "Done";
+                      const finished = p.stage === "Done";
                       const dragging = draggingId === p.id; const over = overId === p.id;
                       const isEditing = editingParts.has(p.id);
                       return (
@@ -1091,7 +1279,9 @@ export default function PartsPagePrototype() {
                               setToast("Part moved to " + weekLabel);
                             } else {
                               // Within-week reorder
-                              setParts((prev) => reorderWithinGroup(prev, src, p.id, organize, stackWeeks));
+                              // For boat view, allow reordering within boat regardless of week constraints
+                              const enforceSameWeek = organize === "Boat" ? false : stackWeeks;
+                              setParts((prev) => reorderWithinGroup(prev, src, p.id, organize, enforceSameWeek));
                               setToast("Reordered within week");
                             }
                             setDraggingId(null); 
@@ -1115,22 +1305,15 @@ export default function PartsPagePrototype() {
                                     className="text-xs border rounded px-2 py-1 text-gray-600"
                                     value={p.boat.id}
                                     onChange={(e) => {
-                                      const isBoat40 = e.target.value.includes('40');
-                                      const newBoat = {
-                                        id: e.target.value,
-                                        label: isBoat40 ? `${e.target.value.split('-')[2]} • 40‑ft` : `${e.target.value.split('-')[2]} • 26‑ft`,
-                                        length: isBoat40 ? 40 : 26,
-                                        colorHex: isBoat40 ? "#0ea5e9" : "#f97316",
-                                        shipWeek: "TBD"
-                                      };
-                                      updatePart(p.id, { boat: newBoat });
+                                      const selectedBoat = availableBoats.find(boat => boat.id === e.target.value);
+                                      if (selectedBoat) {
+                                        updatePart(p.id, { boat: selectedBoat });
+                                      }
                                     }}
                                   >
-                                    <option value="B-26-NEW">NEW • 26‑ft</option>
-                                    <option value="B-26-37211">37211 • 26‑ft</option>
-                                    <option value="B-40-48881">48881 • 40‑ft</option>
-                                    <option value="B-26-12345">12345 • 26‑ft</option>
-                                    <option value="B-40-67890">67890 • 40‑ft</option>
+                                    {availableBoats.map(boat => (
+                                      <option key={boat.id} value={boat.id}>{boat.label}</option>
+                                    ))}
                                   </select>
                                   <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: p.boat.colorHex }}>
                                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.boat.colorHex }} />
@@ -1161,8 +1344,7 @@ export default function PartsPagePrototype() {
                                 value={p.lamType}
                                 onChange={(e) => updatePart(p.id, { lamType: e.target.value as LamType })}
                               >
-                                <option value="Skin">Skin</option>
-                                <option value="Core">Core</option>
+                                <option value="Squish">Squish</option>
                                 <option value="Infusion">Infusion</option>
                                 <option value="Hand Layup">Hand Layup</option>
                               </select>
@@ -1184,20 +1366,28 @@ export default function PartsPagePrototype() {
                             )}
                           </td>
                           <td className="p-2 align-middle">
-                            {isEditing ? (
-                              <select className={cls("rounded-md px-2 py-1 border font-medium", STAGE_COLORS[p.stage], finished && "opacity-70")} value={p.stage}
-                                onChange={(e) => { const next = e.target.value as Stage; if (next === "Finished" && p.qtyDone < p.qtyNeeded) { setToast("Finish blocked: qty not complete"); return; } updatePart(p.id, { stage: next }); }}>
-                                {(["Unscheduled", "Scheduled", "In Mold", "Pulled", "Cutter", "Finished"] as Stage[]).map((s) => (<option key={s} value={s}>{s}</option>))}
-                              </select>
-                            ) : (
-                              <span className={cls("inline-flex items-center px-2 py-1 rounded-md text-xs font-medium", STAGE_COLORS[p.stage])}>{p.stage}</span>
-                            )}
+                            <button 
+                              className={cls("rounded-md px-2 py-1 border font-medium hover:opacity-80 transition-opacity", STAGE_COLORS[p.stage], finished && "opacity-70")}
+                              onClick={() => {
+                                const next = getNextStage(p.stage);
+                                if (next === "Done" && p.qtyDone < p.qtyNeeded) {
+                                  setToast("Finish blocked: qty not complete");
+                                  return;
+                                }
+                                updatePart(p.id, { stage: next });
+                              }}
+                              title="Click to advance to next stage"
+                            >
+                              {p.stage}
+                            </button>
                           </td>
                           <td className="p-2 align-middle text-right">
                             {isEditing ? (
                               <div className="inline-flex items-center gap-1">
                                 <input type="number" min={0} max={p.qtyNeeded} value={p.qtyDone} className="w-16 border rounded-md px-2 py-1 text-right" onChange={(e) => { const v = Math.max(0, Math.min(Number(e.target.value || 0), p.qtyNeeded)); updatePart(p.id, { qtyDone: v }); }} />
-                                <span className="text-gray-400">/ {p.qtyNeeded}</span>
+                                <span className="text-gray-400">/</span>
+                                <input type="number" min={1} value={p.qtyNeeded} className="w-16 border rounded-md px-2 py-1 text-right ml-1"
+                                  onChange={(e) => { const v = Math.max(1, Number(e.target.value || 1)); updatePart(p.id, { qtyNeeded: v, qtyDone: Math.min(p.qtyDone, v) }); }} />
                               </div>
                             ) : (
                               <span className="text-sm">{p.qtyDone} / {p.qtyNeeded}</span>
@@ -1231,20 +1421,45 @@ export default function PartsPagePrototype() {
                             )}
                           </td>
                           <td className="p-2 align-middle">
-                            <button
-                              className={`px-2 py-1 text-xs rounded ${isEditing ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                              onClick={() => {
-                                const newEditingParts = new Set(editingParts);
-                                if (isEditing) {
-                                  newEditingParts.delete(p.id);
-                                } else {
-                                  newEditingParts.add(p.id);
-                                }
-                                setEditingParts(newEditingParts);
-                              }}
-                            >
-                              {isEditing ? '✓ Save' : '✏️ Edit'}
-                            </button>
+                            <div className="relative">
+                              <button
+                                className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuId(openMenuId === p.id ? null : p.id);
+                                }}
+                              >
+                                ⋯
+                              </button>
+                              {openMenuId === p.id && (
+                                <div className="absolute right-0 mt-1 w-24 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                  <button
+                                    className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-50 ${isEditing ? 'text-green-700' : 'text-gray-700'}`}
+                                    onClick={() => {
+                                      const newEditingParts = new Set(editingParts);
+                                      if (isEditing) {
+                                        newEditingParts.delete(p.id);
+                                      } else {
+                                        newEditingParts.add(p.id);
+                                      }
+                                      setEditingParts(newEditingParts);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    {isEditing ? '✓ Save' : '✏️ Edit'}
+                                  </button>
+                                  <button 
+                                    className="w-full px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
+                                    onClick={() => {
+                                      deletePart(p.id, p.name);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    🗑️ Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1297,6 +1512,7 @@ export default function PartsPagePrototype() {
         isOpen={showNewPartForm}
         onClose={() => setShowNewPartForm(false)}
         onSubmit={addNewPart}
+        availableBoats={availableBoats}
       />
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
     </div>

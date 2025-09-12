@@ -42,7 +42,8 @@ type Action =
   | { type: "UPDATE_WEEK_NOTE"; barId: string; weekIso: string; note: string }
   | { type: "ADD_WEEK"; barId: string; afterWeek: number }
   | { type: "SPLIT_BAR"; barId: string; splits: number[] }
-  | { type: "MERGE_BAR"; barIds: string[] };
+  | { type: "MERGE_BAR"; barIds: string[] }
+  | { type: "DELETE_BARS"; boatName: string };
 
 function isDone(status?: CanonicalStatus | null): boolean {
   if (!status) return false;
@@ -177,6 +178,11 @@ function reducer(state: State, action: Action): State {
       
       return { ...state, bars };
     }
+    case "DELETE_BARS": {
+      // Delete all bars for a specific boat
+      const bars = state.bars.filter(b => b.boat !== action.boatName);
+      return { ...state, bars };
+    }
     default:
       return state;
   }
@@ -195,6 +201,7 @@ const ScheduleCtx = createContext<{
   addWeek: (barId: string, afterWeek: number) => void;
   splitBar: (barId: string, splits: number[]) => void;
   mergeBar: (barIds: string[]) => void;
+  deleteBars: (boatName: string) => void;
 } | null>(null);
 
 export function ScheduleProvider({ children }: { children: React.ReactNode }) {
@@ -247,10 +254,14 @@ export function ScheduleProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "MERGE_BAR", barIds });
   }, []);
 
+  const deleteBars = useCallback((boatName: string) => {
+    dispatch({ type: "DELETE_BARS", boatName });
+  }, []);
+
   const value = useMemo(() => ({ 
     state, bootstrap, moveTasks, reorder, toggleDone,
-    addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar 
-  }), [state, bootstrap, moveTasks, reorder, toggleDone, addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar]);
+    addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar, deleteBars 
+  }), [state, bootstrap, moveTasks, reorder, toggleDone, addBars, setBars, updateBar, updateWeekNote, addWeek, splitBar, mergeBar, deleteBars]);
   return <ScheduleCtx.Provider value={value}>{children}</ScheduleCtx.Provider>;
 }
 
