@@ -176,6 +176,7 @@ export default function TimelineWithAddBoat() {
   const [addBoatOpen, setAddBoatOpen] = React.useState(false);
   const [newBoatName, setNewBoatName] = React.useState('');
   const [newBoatModel, setNewBoatModel] = React.useState('26');
+  const [newBoatType, setNewBoatType] = React.useState('Open');
 
   // Enhanced drag and drop
   const [draggingId, setDraggingId] = React.useState(null);
@@ -255,7 +256,7 @@ export default function TimelineWithAddBoat() {
     }
   };
 
-  const addNewBoat = () => {
+  const addNewBoat = async () => {
     if (!newBoatName.trim()) return;
     
     // Find the latest end date across all boats
@@ -276,26 +277,125 @@ export default function TimelineWithAddBoat() {
     
     if (newBoatModel === '26') {
       newBars.push(
-        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '26', dept: 'LAM', start: newStartIso, duration: 3 },
-        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '26', dept: 'ASM', start: isoAddWeeks(newStartIso, 3), duration: 3 },
-        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '26', dept: 'FIN', start: isoAddWeeks(newStartIso, 6), duration: 3 },
-        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '26', dept: 'RIG', start: isoAddWeeks(newStartIso, 9), duration: 3 }
+        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '26', dept: 'LAM', start: newStartIso, duration: 3, boatType: newBoatType },
+        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '26', dept: 'ASM', start: isoAddWeeks(newStartIso, 3), duration: 3, boatType: newBoatType },
+        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '26', dept: 'FIN', start: isoAddWeeks(newStartIso, 6), duration: 3, boatType: newBoatType },
+        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '26', dept: 'RIG', start: isoAddWeeks(newStartIso, 9), duration: 3, boatType: newBoatType }
       );
     } else {
       newBars.push(
-        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '40', dept: 'LAM', start: newStartIso, duration: 8 },
-        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '40', dept: 'ASM', start: isoAddWeeks(newStartIso, 8), duration: 8 },
-        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '40', dept: 'FIN', start: isoAddWeeks(newStartIso, 16), duration: 8 },
-        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '40', dept: 'RIG', start: isoAddWeeks(newStartIso, 24), duration: 8 }
+        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '40', dept: 'LAM', start: newStartIso, duration: 8, boatType: newBoatType },
+        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '40', dept: 'ASM', start: isoAddWeeks(newStartIso, 8), duration: 8, boatType: newBoatType },
+        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '40', dept: 'FIN', start: isoAddWeeks(newStartIso, 16), duration: 8, boatType: newBoatType },
+        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '40', dept: 'RIG', start: isoAddWeeks(newStartIso, 24), duration: 8, boatType: newBoatType }
       );
     }
     
     addBars(newBars);
     
+    // Auto-generate parts based on boat type (for 26ft boats only for now)
+    if (newBoatModel === '26') {
+      await generatePartsForBoat(newBoatName, newBoatModel, newBoatType);
+    }
+    
     // Reset form
     setNewBoatName('');
     setNewBoatModel('26');
+    setNewBoatType('Open');
     setAddBoatOpen(false);
+  };
+
+  // Function to automatically generate parts for a new boat
+  const generatePartsForBoat = async (boatName, model, boatType) => {
+    try {
+      // Load master parts catalog
+      const catalogResponse = await fetch('/master-parts-catalog.json');
+      if (!catalogResponse.ok) {
+        console.error('Catalog fetch failed:', catalogResponse.status, catalogResponse.statusText);
+        throw new Error(`Failed to fetch catalog: ${catalogResponse.status}`);
+      }
+      
+      const catalogText = await catalogResponse.text();
+      let catalog;
+      try {
+        catalog = JSON.parse(catalogText);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError, 'Response text:', catalogText);
+        throw new Error('Invalid JSON response from catalog');
+      }
+      
+      // Filter parts based on boat type
+      const configMapping = {
+        "Open": ["All Boats", "All Open", "Open Boats Only"],
+        "Bay Boat": ["All Boats", "Bay"],
+        "Open with Forward Seating": ["All Boats", "All Open", "Open Boats Only", "Open with Forward Seating"]
+      };
+      
+      // Map boat type to configuration format expected by parts system
+      const boatConfig = boatType === "Open" ? "Open" : 
+                        boatType === "Bay" ? "Bay Boat" : 
+                        "Open with Forward Seating";
+      
+      const relevantBoatTypes = configMapping[boatConfig] || configMapping["Open"];
+      const filteredParts = catalog.masterParts?.filter(part => 
+        part.boatTypes.some(type => relevantBoatTypes.includes(type))
+      ) || [];
+
+      // Create boat parts with smart defaults
+      const boatParts = filteredParts.map(masterPart => {
+        // Smart lamination type assignment
+        let lamType = "Hand Layup";
+        if (masterPart.name.toLowerCase().includes("hull")) {
+          lamType = "Skin";
+        } else if (masterPart.name.toLowerCase().includes("fishbox") || 
+                   masterPart.name.toLowerCase().includes("livewell") ||
+                   masterPart.name.toLowerCase().includes("tub")) {
+          lamType = "Infusion";
+        }
+
+        // Smart gelcoat assignment
+        let gelColor = "White";
+        if (masterPart.name.toLowerCase().includes("fishbox") && masterPart.name.includes("55")) {
+          gelColor = "Dresdin Blue";
+        } else if (masterPart.name.toLowerCase().includes("hull")) {
+          gelColor = "Light Blue";
+        } else if (masterPart.name.toLowerCase().includes("baitwell")) {
+          gelColor = "Dresdin Blue";
+        }
+
+        return {
+          id: `part-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          masterPartId: masterPart.id,
+          name: masterPart.name,
+          category: masterPart.category,
+          qtyNeeded: masterPart.qtyPerBoat,
+          status: "unscheduled",
+          notes: masterPart.notes || "",
+          location: masterPart.location || "",
+          gelColor
+        };
+      });
+
+      // Create new boat entry for parts system
+      const newBoat = {
+        id: `boat-${Date.now()}`,
+        name: `${boatName} ${model}ft`,
+        configuration: boatConfig,
+        color: model === '40' ? "#0ea5e9" : "#f97316", // Blue for 40ft, Orange for 26ft
+        parts: boatParts,
+        createdDate: new Date().toISOString(),
+      };
+
+      // Save to localStorage (same as parts page does)
+      const existingBoats = JSON.parse(localStorage.getItem('fiberglassBoats') || '[]');
+      const updatedBoats = [...existingBoats, newBoat];
+      localStorage.setItem('fiberglassBoats', JSON.stringify(updatedBoats));
+
+      console.log(`✅ Auto-generated ${boatParts.length} parts for ${newBoat.name} (${boatConfig})`);
+    } catch (error) {
+      console.error('Failed to generate parts for boat:', error);
+      // Don't block boat creation if parts generation fails
+    }
   };
 
   const onDropDeptWeek = (dept, weekIso) => {
@@ -605,6 +705,19 @@ export default function TimelineWithAddBoat() {
             </div>
             
             <div>
+              <label className="block text-sm font-medium mb-1">Boat Type</label>
+              <select
+                className="w-full border rounded px-2 py-1 text-sm"
+                value={newBoatType}
+                onChange={(e) => setNewBoatType(e.target.value)}
+              >
+                <option value="Open">Open Sportfish (~22 parts)</option>
+                <option value="Bay">Bay Boat (~28 parts)</option>
+                <option value="Open with Forward Seating">Open w/ Forward Seating (~25 parts)</option>
+              </select>
+            </div>
+            
+            <div>
               <label className="block text-sm font-medium mb-1">Model</label>
               <select
                 className="w-full border rounded px-2 py-1 text-sm"
@@ -627,7 +740,8 @@ export default function TimelineWithAddBoat() {
             </div>
             
             <div className="text-xs text-neutral-600">
-              New boat will be scheduled after the last boat in the timeline.
+              New boat will be scheduled after the last boat in the timeline.<br/>
+              <span className="font-medium text-green-700">Auto-generates complete parts list</span> for lamination tracking.
             </div>
           </div>
         </div>

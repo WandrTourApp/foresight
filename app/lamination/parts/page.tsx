@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Trash2, Edit3, Plus, Undo2, Save, MoreVertical, Calendar, Check } from "lucide-react";
+import { Trash2, Edit3, Plus, Undo2, Save, MoreVertical, Calendar, Check, Factory, ChevronRight } from "lucide-react";
 
 // Status system matching your spreadsheet workflow
 type StatusKey = 
@@ -14,6 +14,24 @@ type StatusKey =
   | "finished";    // Green
 
 type BoatConfiguration = "Bay Boat" | "Open" | "Open with Forward Seating";
+
+// Production schedule types
+type ProductionBoat = {
+  id: string;
+  boat: string;
+  model: string;
+  dept: string;
+  start: string;
+  duration: number;
+  note: string;
+};
+
+type BoatTypeOption = {
+  value: BoatConfiguration;
+  label: string;
+  description: string;
+  partCount: number;
+};
 
 // Boat color mapping based on production schedule logic
 const getBoatColor = (boatName: string, config: BoatConfiguration): string => {
@@ -138,6 +156,13 @@ export default function FiberglassPartsPage() {
   // Menu and schedule dialog state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [scheduleDialogPart, setScheduleDialogPart] = useState<BoatPart | null>(null);
+  
+  // Production schedule integration state
+  const [showProductionScheduleDialog, setShowProductionScheduleDialog] = useState(false);
+  const [productionBoats, setProductionBoats] = useState<ProductionBoat[]>([]);
+  const [selectedProductionBoat, setSelectedProductionBoat] = useState<ProductionBoat | null>(null);
+  const [showBoatTypeSelector, setShowBoatTypeSelector] = useState(false);
+  const [loadingProductionBoats, setLoadingProductionBoats] = useState(false);
 
   // Load master parts catalog
   useEffect(() => {
@@ -175,6 +200,7 @@ export default function FiberglassPartsPage() {
   }, []);
 
   const selectedBoat = boats.find(b => b.id === selectedBoatId);
+  const showingAllBoats = selectedBoatId === "ALL_BOATS";
 
   // Helper to add action to undo stack
   const addToUndoStack = (action: UndoAction) => {
@@ -493,6 +519,157 @@ export default function FiberglassPartsPage() {
     setShowAddPartForm(false);
   };
 
+  // Production schedule functions
+  const loadProductionBoats = async () => {
+    setLoadingProductionBoats(true);
+    try {
+      const response = await fetch('/api/schedule-store');
+      const data = await response.json();
+      
+      // Filter for LAM department boats only
+      const lamBoats = data.bars?.filter((boat: ProductionBoat) => boat.dept === 'LAM') || [];
+      setProductionBoats(lamBoats);
+    } catch (error) {
+      console.error('Failed to load production boats:', error);
+      setProductionBoats([]);
+    } finally {
+      setLoadingProductionBoats(false);
+    }
+  };
+
+  const openProductionScheduleDialog = () => {
+    setShowProductionScheduleDialog(true);
+    loadProductionBoats();
+  };
+
+  const selectProductionBoat = (boat: ProductionBoat) => {
+    setSelectedProductionBoat(boat);
+    setShowBoatTypeSelector(true);
+  };
+
+  // Get boat type options based on model size
+  const getBoatTypeOptions = (model: string): BoatTypeOption[] => {
+    const is40ft = model === '40';
+    
+    if (is40ft) {
+      return [
+        { 
+          value: "Open with Forward Seating", 
+          label: "Open with Forward Seating", 
+          description: "Large sportfishing boat with forward seating area",
+          partCount: 35 
+        },
+        { 
+          value: "Open", 
+          label: "Open Sportfish", 
+          description: "Large open cockpit design",
+          partCount: 30 
+        }
+      ];
+    } else {
+      return [
+        { 
+          value: "Open", 
+          label: "Open Sportfish", 
+          description: "Standard open cockpit design",
+          partCount: 22 
+        },
+        { 
+          value: "Bay Boat", 
+          label: "Bay Boat", 
+          description: "Shallow water fishing configuration",
+          partCount: 28 
+        },
+        { 
+          value: "Open with Forward Seating", 
+          label: "Open with Forward Seating", 
+          description: "Open design with bow seating area",
+          partCount: 25 
+        }
+      ];
+    }
+  };
+
+  // Generate parts from production boat and configuration
+  const generatePartsFromProduction = async (boat: ProductionBoat, config: BoatConfiguration) => {
+    if (!masterParts.length) {
+      console.error('Master parts catalog not loaded');
+      return;
+    }
+
+    // Filter master parts by boat configuration
+    const configMapping: Record<BoatConfiguration, string[]> = {
+      "Open": ["All Boats", "All Open", "Open Boats Only"],
+      "Bay Boat": ["All Boats", "Bay"],
+      "Open with Forward Seating": ["All Boats", "All Open", "Open Boats Only", "Open with Forward Seating"]
+    };
+
+    const relevantBoatTypes = configMapping[config];
+    const filteredParts = masterParts.filter(part => 
+      part.boatTypes.some(type => relevantBoatTypes.includes(type))
+    );
+
+    // Create boat parts with smart defaults
+    const boatParts: BoatPart[] = filteredParts.map(masterPart => {
+      // Smart lamination type assignment
+      let lamType = "Hand Layup";
+      if (masterPart.name.toLowerCase().includes("hull")) {
+        lamType = "Skin";
+      } else if (masterPart.name.toLowerCase().includes("fishbox") || 
+                 masterPart.name.toLowerCase().includes("livewell") ||
+                 masterPart.name.toLowerCase().includes("tub")) {
+        lamType = "Infusion";
+      }
+
+      // Smart gelcoat assignment
+      let gelColor = "White";
+      if (masterPart.name.toLowerCase().includes("fishbox") && masterPart.name.includes("55")) {
+        gelColor = "Dresdin Blue";
+      } else if (masterPart.name.toLowerCase().includes("hull")) {
+        gelColor = "Light Blue";
+      } else if (masterPart.name.toLowerCase().includes("baitwell")) {
+        gelColor = "Dresdin Blue";
+      }
+
+      return {
+        id: `part-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        masterPartId: masterPart.id,
+        name: masterPart.name,
+        category: masterPart.category,
+        qtyNeeded: masterPart.qtyPerBoat,
+        status: "unscheduled" as StatusKey,
+        notes: masterPart.notes || "",
+        location: masterPart.location || "",
+        gelColor
+      };
+    });
+
+    // Create new boat with generated parts
+    const newBoat: Boat = {
+      id: `boat-${Date.now()}`,
+      name: `${boat.boat} ${boat.model}ft`,
+      configuration: config,
+      color: boat.model === '40' ? "#0ea5e9" : "#f97316", // Blue for 40ft, Orange for 26ft
+      parts: boatParts,
+      createdDate: new Date().toISOString(),
+    };
+
+    setBoats(prev => {
+      const updated = [...prev, newBoat];
+      saveToStorage(updated);
+      return updated;
+    });
+
+    setSelectedBoatId(newBoat.id);
+    
+    // Close dialogs
+    setShowProductionScheduleDialog(false);
+    setShowBoatTypeSelector(false);
+    setSelectedProductionBoat(null);
+
+    console.log(`Generated ${boatParts.length} parts for ${newBoat.name} (${config})`);
+  };
+
   // Load boats from localStorage on mount
   useEffect(() => {
     try {
@@ -566,6 +743,14 @@ export default function FiberglassPartsPage() {
           >
             <Save className="w-4 h-4" />
             Save
+          </button>
+          
+          <button
+            onClick={openProductionScheduleDialog}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <Factory className="w-4 h-4" />
+            From Production Schedule
           </button>
           
           <button
@@ -696,12 +881,82 @@ export default function FiberglassPartsPage() {
             className="w-full max-w-md border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">-- Select a boat --</option>
+            <option value="ALL_BOATS">🚢 View All Boats (Color Coded)</option>
             {boats.map(boat => (
               <option key={boat.id} value={boat.id}>
                 {boat.name} ({boat.configuration}) - {boat.parts.length} parts
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {/* All Boats Overview */}
+      {showingAllBoats && (
+        <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-gradient-to-r from-gray-50 to-white px-6 py-4 border-b">
+            <h2 className="text-xl font-semibold">All Boats Overview</h2>
+            <p className="text-sm text-gray-600">{boats.length} boats • {boats.reduce((total, boat) => total + boat.parts.length, 0)} total parts</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Boat</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Part</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gel Color</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {boats.flatMap(boat => 
+                  boat.parts.map(part => {
+                    const statusConfig = STATUS_CONFIG[part.status];
+                    return (
+                      <tr 
+                        key={`${boat.id}-${part.id}`}
+                        className="hover:opacity-90 transition-opacity border-l-4" 
+                        style={{ 
+                          borderLeftColor: boat.color, // Boat color border
+                          backgroundColor: statusConfig.bgHex + '15', // Status color fill with lighter opacity
+                        }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div 
+                              className="w-3 h-3 rounded-full border border-gray-300" 
+                              style={{ backgroundColor: boat.color }}
+                            ></div>
+                            <span className="font-medium text-sm">{boat.name}</span>
+                            <span className="text-xs text-gray-500">({boat.configuration})</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-medium">{part.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{part.category}</td>
+                        <td className="px-4 py-3 text-sm">{part.qtyNeeded}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className="px-3 py-1 rounded-full text-xs font-semibold border"
+                            style={{ 
+                              backgroundColor: statusConfig.bgHex,
+                              color: statusConfig.textColor,
+                              borderColor: boat.color 
+                            }}
+                          >
+                            {statusConfig.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{part.gelColor}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -948,6 +1203,119 @@ export default function FiberglassPartsPage() {
               
               <button
                 onClick={() => setScheduleDialogPart(null)}
+                className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Production Schedule Dialog */}
+      {showProductionScheduleDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Select Boat from Production Schedule</h3>
+                <p className="text-sm text-gray-600">Choose a boat from the lamination department schedule</p>
+              </div>
+              <button
+                onClick={() => setShowProductionScheduleDialog(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {loadingProductionBoats ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-gray-500">Loading production schedule...</div>
+              </div>
+            ) : productionBoats.length === 0 ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center text-gray-500">
+                  <Factory className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No boats found in lamination schedule</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {productionBoats.map((boat) => (
+                  <div
+                    key={boat.id}
+                    onClick={() => selectProductionBoat(boat)}
+                    className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">
+                          {boat.boat} {boat.model}ft
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          Start: {new Date(boat.start).toLocaleDateString()} • Duration: {boat.duration} weeks
+                        </p>
+                        {boat.note && (
+                          <p className="text-xs text-gray-500 mt-1">{boat.note}</p>
+                        )}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Boat Type Selection Dialog */}
+      {showBoatTypeSelector && selectedProductionBoat && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Configure Boat Type</h3>
+                <p className="text-sm text-gray-600">
+                  {selectedProductionBoat.boat} {selectedProductionBoat.model}ft
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowBoatTypeSelector(false);
+                  setSelectedProductionBoat(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {getBoatTypeOptions(selectedProductionBoat.model).map((option) => (
+                <div
+                  key={option.value}
+                  onClick={() => generatePartsFromProduction(selectedProductionBoat, option.value)}
+                  className="p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-900">{option.label}</h4>
+                    <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                      ~{option.partCount} parts
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">{option.description}</p>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-6 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowBoatTypeSelector(false);
+                  setSelectedProductionBoat(null);
+                }}
                 className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
               >
                 Cancel
