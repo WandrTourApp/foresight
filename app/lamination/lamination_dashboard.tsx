@@ -47,14 +47,14 @@ type Part = {
   notes?: string;
 };
 
-const GELCOAT_OPTIONS = ["White", "Black", "Blue", "Red", "Gray", "Custom"];
-const PROCESS_OPTIONS = ["Infusion", "Open", "Squish"];
+// const GELCOAT_OPTIONS = ["White", "Black", "Blue", "Red", "Gray", "Custom"];
+// const PROCESS_OPTIONS = ["Infusion", "Open", "Squish"];
 const ALERT_TYPES = ["Quality Issue", "Delay", "Material Shortage", "Equipment Problem", "Other"];
 
 // Generate weeks for scheduling display
 function getWorkWeeks(startDate, numWeeks = 3) {
   const weeks = [];
-  let currentDate = new Date(startDate);
+  const currentDate = new Date(startDate);
   
   // Find the Monday of the week containing startDate
   const dayOfWeek = currentDate.getDay();
@@ -78,7 +78,7 @@ function getWorkWeeks(startDate, numWeeks = 3) {
 }
 
 // Group parts by week (similar to lamination schedule)
-function groupPartsByWeek(parts: Part[], weeks: any[]) {
+function groupPartsByWeek(parts: Part[], weeks: Array<{weekStartISO: string; label: string; startDate: Date}>) {
   const weekSections = weeks.map(week => {
     const weekStart = new Date(week.weekStartISO);
     const weekEnd = new Date(weekStart);
@@ -134,6 +134,9 @@ export default function LaminationDashboard() {
   const [selectedBar, setSelectedBar] = useState(null);
   const [barPopupOpen, setBarPopupOpen] = useState(false);
   const [organize, setOrganize] = useState<Organizer>("Boat");
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [dragging, setDragging] = useState(null);
 
   // Generate weeks starting from current date
   const weeks = useMemo(() => getWorkWeeks(new Date()), []);
@@ -242,13 +245,15 @@ export default function LaminationDashboard() {
     const targetDayIndex = ['Mon', 'Tue', 'Wed', 'Thu'].indexOf(targetDay);
     if (targetDayIndex === -1) return;
     
-    const targetDate = targetWeek.days[targetDayIndex]?.dateStr;
-    if (!targetDate) return;
+    // Calculate the target date based on the week start date and day index
+    const targetDate = new Date(targetWeek.startDate);
+    targetDate.setDate(targetDate.getDate() + targetDayIndex);
+    const targetDateStr = targetDate.toISOString().split('T')[0];
 
     // Update the part data
     setParts(prev => prev.map(part => 
       part.id === dragging.id 
-        ? { ...part, scheduledWeek: targetDate }
+        ? { ...part, scheduledWeek: targetDateStr }
         : part
     ));
     
@@ -276,7 +281,7 @@ export default function LaminationDashboard() {
   }
 
   function updateCard(updatedCard) {
-    setWeeklyParts(prev => prev.map(part => 
+    setParts(prev => prev.map(part => 
       part.id === updatedCard.id ? updatedCard : part
     ));
   }

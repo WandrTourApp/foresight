@@ -549,6 +549,64 @@ export default function PartsPagePrototype() {
   const [editingParts, setEditingParts] = useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Auto-scroll functionality
+  const [scrollInterval, setScrollInterval] = useState<NodeJS.Timeout | null>(null);
+  const SCROLL_SPEED = 5; // Pixels per frame
+  const SCROLL_ZONE = 50; // 50px from top/bottom edge
+
+  const startAutoScroll = (direction: 'up' | 'down') => {
+    if (scrollInterval) return; // Already scrolling
+    
+    const interval = setInterval(() => {
+      const scrollAmount = direction === 'up' ? -SCROLL_SPEED : SCROLL_SPEED;
+      window.scrollBy(0, scrollAmount);
+    }, 16); // ~60fps
+    setScrollInterval(interval);
+  };
+
+  const stopAutoScroll = () => {
+    if (scrollInterval) {
+      clearInterval(scrollInterval);
+      setScrollInterval(null);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    
+    if (!draggingId) return; // Only auto-scroll when actually dragging
+    
+    const mouseY = e.clientY;
+    const windowHeight = window.innerHeight;
+    
+    if (mouseY < SCROLL_ZONE) {
+      // Near top - scroll up
+      startAutoScroll('up');
+    } else if (mouseY > windowHeight - SCROLL_ZONE) {
+      // Near bottom - scroll down
+      startAutoScroll('down');
+    } else {
+      // In middle - stop scrolling
+      stopAutoScroll();
+    }
+  };
+
+  // Stop auto-scroll when drag ends
+  useEffect(() => {
+    if (!draggingId) {
+      stopAutoScroll();
+    }
+  }, [draggingId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+      }
+    };
+  }, [scrollInterval]);
+
   // Get boat data from production schedule
   const scheduleBars = useAllBars();
   const { setBars } = useScheduleStore();
@@ -830,7 +888,7 @@ export default function PartsPagePrototype() {
   const COL_COUNT = 8;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white" onDragOver={handleDragOver}>
       {/* Header */}
       <div className="border-b bg-white sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
