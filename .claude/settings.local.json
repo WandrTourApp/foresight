@@ -3,7 +3,9 @@
     "allow": [
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Read(//c/Users/jtfro/Documents/Foresight/Barker Files/**)"
     ],
     "deny": [],
     "ask": []

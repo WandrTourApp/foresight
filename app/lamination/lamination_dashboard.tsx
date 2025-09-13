@@ -30,6 +30,7 @@ function colorForBoat(boat, parts: Part[] = []) {
 // Types from lamination schedule
 type Stage = "In Mold" | "Out of Mold" | "Cutter" | "Finishing" | "Done";
 type LamType = "Squish" | "Infusion" | "Hand Layup";
+type Organizer = "None" | "Boat" | "Lamination Type";
 
 type Part = {
   id: string;
@@ -50,8 +51,8 @@ const GELCOAT_OPTIONS = ["White", "Black", "Blue", "Red", "Gray", "Custom"];
 const PROCESS_OPTIONS = ["Infusion", "Open", "Squish"];
 const ALERT_TYPES = ["Quality Issue", "Delay", "Material Shortage", "Equipment Problem", "Other"];
 
-// Generate 4-day work weeks (Mon-Thu only)
-function getWorkWeeks(startDate, numWeeks = 8) {
+// Generate weeks for scheduling display
+function getWorkWeeks(startDate, numWeeks = 3) {
   const weeks = [];
   let currentDate = new Date(startDate);
   
@@ -62,23 +63,12 @@ function getWorkWeeks(startDate, numWeeks = 8) {
   
   for (let w = 0; w < numWeeks; w++) {
     const weekStart = new Date(currentDate);
-    const days = [];
-    
-    for (let d = 0; d < 4; d++) { // Mon-Thu only
-      const day = new Date(weekStart);
-      day.setDate(weekStart.getDate() + d);
-      days.push({
-        date: day,
-        label: ['Mon', 'Tue', 'Wed', 'Thu'][d],
-        dateStr: day.toISOString().split('T')[0]
-      });
-    }
     
     weeks.push({
       weekNumber: w + 1,
-      label: `Week of ${weekStart.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`,
+      label: `Week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
       startDate: weekStart,
-      days
+      weekStartISO: weekStart.toISOString().split('T')[0]
     });
     
     currentDate.setDate(currentDate.getDate() + 7); // Next week
@@ -87,64 +77,74 @@ function getWorkWeeks(startDate, numWeeks = 8) {
   return weeks;
 }
 
-// Transform lamination parts into weekly cards
-function transformPartsToWeeklyCards(parts: Part[], weeks: any[]) {
-  const cards: any[] = [];
-  
-  parts.forEach((part, index) => {
-    if (!part.scheduledWeek) return;
+// Group parts by week (similar to lamination schedule)
+function groupPartsByWeek(parts: Part[], weeks: any[]) {
+  const weekSections = weeks.map(week => {
+    const weekStart = new Date(week.weekStartISO);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
     
-    // Find which week this part belongs to
-    const scheduledDate = new Date(part.scheduledWeek);
-    const weekIndex = weeks.findIndex(week => {
-      const weekStart = week.startDate;
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6); // Full week
+    const items = parts.filter(part => {
+      if (!part.scheduledWeek) return false;
+      const scheduledDate = new Date(part.scheduledWeek);
       return scheduledDate >= weekStart && scheduledDate <= weekEnd;
     });
     
-    if (weekIndex === -1) return; // Part not in visible weeks
-    
-    // Assign to a day within the week (distribute evenly or use specific logic)
-    const dayIndex = index % 4; // Distribute across Mon-Thu
-    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu'];
-    
-    cards.push({
-      id: part.id,
-      boat: part.boat.label.split(' • ')[0], // Extract boat name
-      part: part.name,
-      gelcoat: part.gelcoat,
-      sprayDate: part.dueDate,
-      process: part.lamType === "Squish" ? "Squish" : 
-               part.lamType === "Infusion" ? "Infusion" : "Open", // Map Hand Layup to Open
-      weekNumber: weekIndex + 1,
-      day: dayLabels[dayIndex],
-      dayNote: part.notes || ""
-    });
+    return {
+      key: week.weekStartISO,
+      label: week.label,
+      items: items,
+      range: { start: weekStart, end: weekEnd }
+    };
   });
   
-  return cards;
+  return weekSections;
+}
+
+// Grouping helper functions (matching schedule)
+function groupKeyFor(part: Part, organize: Organizer): string {
+  switch (organize) {
+    case "Boat":
+      return part.boat.id;
+    case "Lamination Type":
+      return part.lamType;
+    default:
+      return "all";
+  }
+}
+
+// Group rows by organizer (matching schedule organization)
+function groupRows(items: Part[], organize: Organizer): Array<[string, Part[]]> {
+  if (organize === "None") {
+    return [["all", items]];
+  }
+  
+  const map = new Map<string, Part[]>();
+  items.forEach((p) => {
+    const k = groupKeyFor(p, organize);
+    const arr = map.get(k) || [];
+    arr.push(p);
+    map.set(k, arr);
+  });
+  return Array.from(map.entries());
 }
 
 export default function LaminationDashboard() {
   const [showScheduled, setShowScheduled] = useState(false);
-  const [selectedCard, setSelectedCard] = useState(null);
   const [selectedBar, setSelectedBar] = useState(null);
-  const [popupOpen, setPopupOpen] = useState(false);
   const [barPopupOpen, setBarPopupOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [dragging, setDragging] = useState(null);
+  const [organize, setOrganize] = useState<Organizer>("Boat");
 
   // Generate weeks starting from current date
-  const weeks = useMemo(() => getWorkWeeks(new Date('2025-02-10')), []);
+  const weeks = useMemo(() => getWorkWeeks(new Date()), []);
 
   // Parts data from lamination schedule
   const [parts, setParts] = useState<Part[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Transform parts into weekly cards
-  const weeklyCards = useMemo(() => {
-    return transformPartsToWeeklyCards(parts, weeks);
+  // Group parts into week sections (matching schedule layout)
+  const weekSections = useMemo(() => {
+    return groupPartsByWeek(parts, weeks);
   }, [parts, weeks]);
 
   // Dynamic boat list from loaded parts
@@ -370,7 +370,7 @@ export default function LaminationDashboard() {
         <div className="flex gap-3">
           <button 
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            onClick={() => alert("Navigate to Boat Tracker" + (selectedCard || selectedBar ? ` for ${(selectedCard?.boat || selectedBar?.boat)}` : ""))}
+            onClick={() => alert("Navigate to Boat Tracker" + (selectedBar ? ` for ${selectedBar?.boat}` : ""))}
           >
             Open Boat Tracker
           </button>
@@ -385,69 +385,129 @@ export default function LaminationDashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* Weekly Schedule Cards - Left Column */}
-        <div className="xl:col-span-2 bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Weekly Schedule</h2>
-            {loading && <div className="text-sm text-gray-500">Loading parts...</div>}
-          </div>
-          
-          <div className="overflow-y-auto max-h-[600px]">
-            {weeks.slice(0, 4).map(week => (
-              <div key={week.weekNumber} className="mb-6 border border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-medium mb-3 text-gray-700">{week.label}</h3>
-                
-                <div className="grid grid-cols-4 gap-4">
-                  {week.days.map(day => (
-                    <div 
-                      key={day.label}
-                      className="min-h-[250px] border-2 border-dashed border-gray-300 rounded-lg p-3 bg-gray-50"
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => handleDrop(e, week.weekNumber, day.label)}
-                    >
-                      <div className="text-center mb-3">
-                        <h4 className="font-medium text-sm text-gray-600">{day.label}</h4>
-                        <div className="text-xs text-gray-500">{day.date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' })}</div>
-                      </div>
-                      
-                      {weeklyCards
-                        .filter(card => card.weekNumber === week.weekNumber && card.day === day.label)
-                        .map(card => (
-                          <div
-                            key={card.id}
-                            className="bg-white border border-gray-200 rounded-lg p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow"
-                            style={{ borderLeft: `4px solid ${colorForBoat(card.boat, parts)}` }}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, card)}
-                            onClick={() => handleCardClick(card)}
-                          >
-                            <div className="text-sm font-semibold text-gray-800">{card.boat} - {card.part}</div>
-                            
-                            <div className="text-xs text-gray-600 mt-1">
-                              Gelcoat: {card.gelcoat}
-                            </div>
-                            
-                            <div className="text-xs text-gray-600">
-                              Process: {card.process}
-                            </div>
-                            
-                            <div className="text-xs text-blue-600 mt-1">
-                              Spray: {new Date(card.sprayDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' })}
-                            </div>
-                            
-                            {card.dayNote && (
-                              <div className="text-xs text-gray-700 mt-2 bg-yellow-50 p-1 rounded border">
-                                {card.dayNote}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      }
-                    </div>
-                  ))}
+        {/* Lamination Schedule Mirror - Left Column */}
+        <div className="xl:col-span-2 space-y-6">
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-semibold">Lamination Schedule</h2>
+                <div className="flex flex-col">
+                  <label className="text-xs text-gray-500 mb-1">Organize by</label>
+                  <select 
+                    className="border rounded-md px-2 py-2 text-sm" 
+                    value={organize} 
+                    onChange={(e) => setOrganize(e.target.value as Organizer)}
+                  >
+                    {(["None", "Boat", "Lamination Type"] as Organizer[]).map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            ))}
+              {loading && <div className="text-sm text-gray-500">Loading parts...</div>}
+            </div>
+            
+            <div className="space-y-6">
+              {weekSections.map((section) => {
+                const grouped = groupRows(section.items, organize);
+                return (
+                  <div key={section.key} className="rounded-xl border">
+                    <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                      <div className="text-sm font-semibold">{section.label}</div>
+                      <div className="text-xs text-gray-500">{section.items.length} parts</div>
+                    </div>
+
+                    <table className="w-full text-sm">
+                      <thead className="bg-white">
+                        <tr className="border-b">
+                          <th className="p-2 text-left">Part</th>
+                          <th className="p-2 text-left">Lam Type</th>
+                          <th className="p-2 text-left">Gelcoat</th>
+                          <th className="p-2 text-left">Stage</th>
+                          <th className="p-2 text-right">Qty</th>
+                          <th className="p-2 text-left">Due</th>
+                          <th className="p-2 text-left">Assignee</th>
+                          <th className="p-2 text-left">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grouped.map(([key, rows]) => (
+                          <React.Fragment key={key}>
+                            {organize !== "None" && (
+                              <tr className="bg-gray-50/70 border-b">
+                                <td colSpan={8} className="px-3 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  {organize === "Boat" && (
+                                    <span className="inline-flex items-center gap-2">
+                                      <span className="h-3 w-3 rounded-full border" style={{ backgroundColor: rows[0]?.boat.colorHex }} />
+                                      {rows[0]?.boat.label} ({rows.length})
+                                    </span>
+                                  )}
+                                  {organize === "Lamination Type" && (
+                                    <span>{rows[0]?.lamType} ({rows.length})</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                            {rows.map((p) => {
+                              const overdue = new Date(p.dueDate) < new Date() && p.stage !== "Done";
+                              const finished = p.stage === "Done";
+                              const STAGE_COLORS: Record<Stage, string> = {
+                                "In Mold": "bg-red-300 text-red-900",
+                                "Out of Mold": "bg-orange-300 text-orange-900",
+                                "Cutter": "bg-yellow-300 text-yellow-900",
+                                "Finishing": "bg-lime-300 text-lime-900",
+                                "Done": "bg-green-400 text-green-900",
+                              };
+                              return (
+                                <tr key={p.id}
+                                  className={`border-b hover:bg-gray-50 ${finished ? 'line-through opacity-60' : ''}`} 
+                                  style={{ borderLeft: `4px solid ${p.boat.colorHex}` }}>
+                                  <td className="p-2 align-middle">
+                                    <div className="font-medium flex items-center gap-2">
+                                      <span>{p.name}</span>
+                                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: p.boat.colorHex }}>
+                                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.boat.colorHex }} />
+                                        {p.boat.length}‑ft
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-gray-500">Boat: {p.boat.label}</div>
+                                  </td>
+                                  <td className="p-2 align-middle">
+                                    <span className="text-sm">{p.lamType}</span>
+                                  </td>
+                                  <td className="p-2 align-middle">{p.gelcoat}</td>
+                                  <td className="p-2 align-middle">
+                                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${STAGE_COLORS[p.stage]}`}>
+                                      {p.stage}
+                                    </span>
+                                  </td>
+                                  <td className="p-2 text-right align-middle">
+                                    <span className="text-sm">
+                                      {p.qtyDone}/{p.qtyNeeded}
+                                    </span>
+                                  </td>
+                                  <td className="p-2 align-middle">
+                                    <span className={`text-sm ${overdue ? 'text-red-600 font-medium' : ''}`}>
+                                      {new Date(p.dueDate).toLocaleDateString()}
+                                    </span>
+                                  </td>
+                                  <td className="p-2 align-middle">
+                                    <span className="text-sm">{p.assignee || "—"}</span>
+                                  </td>
+                                  <td className="p-2 align-middle">
+                                    <span className="text-sm text-gray-600">{p.notes || "—"}</span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -541,132 +601,6 @@ export default function LaminationDashboard() {
           </div>
         </div>
       </div>
-
-      {/* Card Edit Pop-up Modal */}
-      {popupOpen && selectedCard && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-96 max-w-90vw">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Edit Card</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="text-gray-600 hover:text-gray-800 relative"
-                >
-                  ⋮
-                  {menuOpen && (
-                    <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-40 z-10">
-                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Add Week</button>
-                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Subtract Week</button>
-                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Split Week</button>
-                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Merge Week</button>
-                    </div>
-                  )}
-                </button>
-                <button
-                  onClick={() => {setPopupOpen(false); setMenuOpen(false);}}
-                  className="text-gray-600 hover:text-gray-800"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Boat + Part</label>
-                <input
-                  type="text"
-                  value={`${selectedCard.boat} - ${selectedCard.part}`}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  onChange={(e) => {
-                    const [boat, ...partArray] = e.target.value.split(' - ');
-                    const part = partArray.join(' - ');
-                    setSelectedCard({...selectedCard, boat: boat || '', part: part || ''});
-                  }}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Gelcoat</label>
-                <div className="flex gap-2">
-                  <select
-                    value={GELCOAT_OPTIONS.includes(selectedCard.gelcoat) ? selectedCard.gelcoat : 'Custom'}
-                    onChange={(e) => setSelectedCard({...selectedCard, gelcoat: e.target.value})}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
-                  >
-                    {GELCOAT_OPTIONS.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                  {(!GELCOAT_OPTIONS.includes(selectedCard.gelcoat) || selectedCard.gelcoat === 'Custom') && (
-                    <input
-                      type="text"
-                      value={selectedCard.gelcoat === 'Custom' ? '' : selectedCard.gelcoat}
-                      onChange={(e) => setSelectedCard({...selectedCard, gelcoat: e.target.value})}
-                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="Custom gelcoat"
-                    />
-                  )}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Spray Date</label>
-                <input
-                  type="date"
-                  value={selectedCard.sprayDate}
-                  onChange={(e) => setSelectedCard({...selectedCard, sprayDate: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Process</label>
-                <select
-                  value={selectedCard.process}
-                  onChange={(e) => setSelectedCard({...selectedCard, process: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  {PROCESS_OPTIONS.map(option => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Day Note</label>
-                <textarea
-                  value={selectedCard.dayNote || ''}
-                  onChange={(e) => setSelectedCard({...selectedCard, dayNote: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 resize-none"
-                  rows={2}
-                  placeholder="Note for this day..."
-                />
-              </div>
-              
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => {
-                    updateCard(selectedCard);
-                    setPopupOpen(false); 
-                    setMenuOpen(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Submit
-                </button>
-                <button
-                  onClick={() => {setPopupOpen(false); setMenuOpen(false);}}
-                  className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Timeline Bar Pop-up Modal */}
       {barPopupOpen && selectedBar && (

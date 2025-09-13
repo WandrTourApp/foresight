@@ -1,0 +1,544 @@
+{
+  "masterParts": [
+    {
+      "id": "console",
+      "name": "Console",
+      "category": "Console",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "console-door",
+      "name": "Console Door", 
+      "category": "Console",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "console-liner",
+      "name": "Console Liner",
+      "category": "Console", 
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "big-leaning-post",
+      "name": "Big Leaning Post",
+      "category": "Leaning Post",
+      "boatTypes": ["Open Boats Only"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "small-leaning-post", 
+      "name": "Small Leaning Post",
+      "category": "Leaning Post",
+      "boatTypes": ["Open Boats Only"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "140-gallon-fish-box",
+      "name": "140 Gallon Fish Box",
+      "category": "Open Tubs",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "port-side-fishbox",
+      "name": "Port Side Fishbox",
+      "category": "Open Tubs", 
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "starboard-side-fishbox",
+      "name": "Starboard Side Fishbox",
+      "category": "Open Tubs",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "45-gallon-lp-livewell",
+      "name": "45 Gallon LP Livewell",
+      "category": "Open Tubs",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "port-forward-seating-tub",
+      "name": "Port Side Forward Seating Tub",
+      "category": "Open Tubs",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "starboard-forward-seating-tub",
+      "name": "Starboard Side Forward Seating Tub", 
+      "category": "Open Tubs",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "15-gallon-transom-livewell",
+      "name": "15 Gallon Transom Livewell",
+      "category": "Open Tubs",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 2,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "forward-liner-tub",
+      "name": "Forward Liner Tub",
+      "category": "Bay Tubs",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "step-tub",
+      "name": "Step Tub",
+      "category": "Bay Tubs",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "3-tub-livewells",
+      "name": "3 Tub Livewells",
+      "category": "Bay Tubs",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "55-gallon-fishbox",
+      "name": "55 Gallon Fishbox",
+      "category": "Universal Tubs",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "55-gallon-fishbox-fwd",
+      "name": "55 Gallon Fishbox (for FWD seating)",
+      "category": "Universal Tubs",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "15-gallon-forward-baitwell",
+      "name": "15 Gallon Forward Baitwell (Dresdin Blue)",
+      "category": "Universal Tubs",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "standard-drop-bucket",
+      "name": "Standard Drop in Bucket",
+      "category": "Universal Tubs",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-a-open-port-rod",
+      "name": "A (open port rod)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-b-open-stbd-rod",
+      "name": "B (open stbd rod)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-c-open-140g-fishbox",
+      "name": "C (open 140g fishbox)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-i-open-rear-sides",
+      "name": "I (2) (open rear sides)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Open"],
+      "qtyPerBoat": 2,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-1-bay-port-rear",
+      "name": "#1 (bay port rear)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-2-bay-stbd-rear",
+      "name": "#2 (bay stbd rear)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-3-bay-open-55g-fishbox",
+      "name": "#3 (3) (bay/open 55g fishbox)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 3,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-4-bay-port-front",
+      "name": "#4 (bay port front)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-5-bay-middle-rear",
+      "name": "#5 (bay middle rear)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-6-bay-3-bucket",
+      "name": "#6 (bay 3 bucket)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-7-bay-open-anchor",
+      "name": "#7 (bay/open anchor)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-8-bay-front-middle",
+      "name": "#8 (bay front middle)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-9-bay-stbd-front",
+      "name": "#9 (bay stbd front)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-10-bay-troll-battery",
+      "name": "#10 (bay troll battery)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Bay"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-11-bay-open-livewell",
+      "name": "#11 (bay/open livewell)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-12-bay-open-battery",
+      "name": "#12 (bay/open battery)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-13-bay-open-rear-seat",
+      "name": "#13 (bay/open rear seat)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-14-bay-open-non-skid",
+      "name": "#14 (bay/open non skid pieplate)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-15-bay-open-smooth",
+      "name": "#15 (bay/open smooth pieplate)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hatch-16-bay-open-long",
+      "name": "#16 (bay/open long pieplate)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "forward-seating-front",
+      "name": "Forward Seating Front",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "forward-seating-side",
+      "name": "Forward Seating Side (2)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 2,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "forward-seating-insert",
+      "name": "Forward Seating Insert (Option)",
+      "category": "Hatches and Pie Plates",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "guide-tackle-bucket",
+      "name": "\"Guide Tackle\" Bucket",
+      "category": "Options",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "8-8-speaker-rings",
+      "name": "8.8\" Speaker Rings",
+      "category": "Options",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 4,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "10-speaker-rings",
+      "name": "10\" Speaker Rings",
+      "category": "Options",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 2,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "12-speaker-rings",
+      "name": "12\" Speaker Rings",
+      "category": "Options",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 0,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "console-door-trim",
+      "name": "Console door trim",
+      "category": "Trim",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "sea-chest",
+      "name": "Sea Chest",
+      "category": "All Boats",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "upper-helm",
+      "name": "Upper Helm",
+      "category": "Options",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "hard-top-pie-plates",
+      "name": "Hard Top Pie Plates",
+      "category": "Hard Tops",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 2,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "key-west-hardtop-no-sunroof-no-insert",
+      "name": "Key West Hardtop no Sunroof no Insert",
+      "category": "Hard Tops",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "key-west-hardtop-w-sunroof-no-insert",
+      "name": "Key West Hardtop w/ Sunroof no Insert",
+      "category": "Hard Tops",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "key-west-hardtop-w-sunroof-and-insert",
+      "name": "Key West Hardtop w/ Sunroof and Insert",
+      "category": "Hard Tops",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "full-hardtop-w-sunroof-and-insert",
+      "name": "Full Hardtop w/ Sunroof and Insert",
+      "category": "Hard Tops",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "full-hardtop-w-sunroof-no-insert",
+      "name": "Full Hardtop w/ Sunroof no Insert",
+      "category": "Hard Tops",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "26-hull",
+      "name": "26' Hull",
+      "category": "Hull",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "open-liner-standard",
+      "name": "Open Liner Standard",
+      "category": "Liner",
+      "boatTypes": ["Open Boats Only"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "open-liner-w-forward-seating",
+      "name": "Open Liner w/ Forward Seating",
+      "category": "Liner",
+      "boatTypes": ["Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "open-deck",
+      "name": "Open Deck",
+      "category": "Deck",
+      "boatTypes": ["Open Boats Only", "Open with Forward Seating"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    },
+    {
+      "id": "fuel-tank-floor",
+      "name": "Fuel Tank Floor",
+      "category": "Hull",
+      "boatTypes": ["All Boats"],
+      "qtyPerBoat": 1,
+      "location": "",
+      "notes": ""
+    }
+  ]
+}
