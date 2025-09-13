@@ -471,7 +471,7 @@ function runDevTests() {
   const lamOpts = ["All", "Squish", "Infusion", "Hand Layup"] as const;
   const gelOpts = ["All", "Snow White", "Seafoam", "Shark Grey"] as const;
   const dueOpts = ["All", "This Week", "Next Week", "Overdue"] as const;
-  results.push({ name: "Stage options length", pass: stageOpts.length === 7 });
+  results.push({ name: "Stage options length", pass: stageOpts.length === 6 });
   results.push({ name: "Lam options length", pass: lamOpts.length === 4 });
   results.push({ name: "Gel options length", pass: gelOpts.length === 4 });
   results.push({ name: "Due options length", pass: dueOpts.length === 4 });
@@ -543,7 +543,7 @@ export default function PartsPagePrototype() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState<number>(0); // 0 = this week
-  const [stackWeeks, setStackWeeks] = useState<boolean>(false);
+  const [stackWeeks, setStackWeeks] = useState<boolean>(true);
   const [stackCount, setStackCount] = useState<number>(3);
   const [showNewPartForm, setShowNewPartForm] = useState<boolean>(false);
   const [editingParts, setEditingParts] = useState<Set<string>>(new Set());
@@ -854,16 +854,6 @@ export default function PartsPagePrototype() {
               >
                 Save All Changes
               </button>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-600">
-                <input type="checkbox" checked={stackWeeks} onChange={(e) => setStackWeeks(e.target.checked)} /> Stack weeks
-              </label>
-              {stackWeeks && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span>Show</span>
-                  <input type="number" min={1} max={8} value={stackCount} onChange={(e) => setStackCount(Math.max(1, Math.min(8, Number(e.target.value) || 1)))} className="w-14 border rounded-md px-2 py-1" />
-                  <span>weeks</span>
-                </div>
-              )}
             </div>
           </div>
           {/* Stats */}

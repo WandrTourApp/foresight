@@ -1,0 +1,44 @@
+{
+  "bars": [
+    {
+      "id": "LAM-Johnson-26-1",
+      "boat": "Johnson",
+      "model": "26",
+      "dept": "LAM",
+      "start": "2025-09-09",
+      "duration": 3,
+      "note": "On track, gelcoat complete",
+      "weekNotes": {}
+    },
+    {
+      "id": "FIN-Johnson-26-1",
+      "boat": "Johnson",
+      "model": "26",
+      "dept": "FIN",
+      "start": "2025-09-30",
+      "duration": 2,
+      "note": "Awaiting lamination completion",
+      "weekNotes": {}
+    },
+    {
+      "id": "LAM-Orme-26-1",
+      "boat": "Orme",
+      "model": "26",
+      "dept": "LAM",
+      "start": "2025-09-16",
+      "duration": 3,
+      "note": "Materials ready",
+      "weekNotes": {}
+    },
+    {
+      "id": "LAM-Smoak-40-1",
+      "boat": "Smoak",
+      "model": "40",
+      "dept": "LAM",
+      "start": "2025-09-23",
+      "duration": 8,
+      "note": "Large hull project",
+      "weekNotes": {}
+    }
+  ]
+}
