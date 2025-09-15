@@ -14,7 +14,24 @@ const BOAT_COLORS = {
 };
 
 function colorForBoat(boat) {
+  // First check if there's a custom color stored in localStorage from the schedule
+  try {
+    const scheduleData = JSON.parse(localStorage.getItem('scheduleData') || '{}');
+    const boatBar = scheduleData.bars?.find(b => b.boat === boat && b.color);
+    if (boatBar?.color) return boatBar.color;
+
+    // Also check fiberglass boats data
+    const fiberglassBoats = JSON.parse(localStorage.getItem('fiberglassBoats') || '[]');
+    const fiberglassBoat = fiberglassBoats.find(b => b.name.includes(boat));
+    if (fiberglassBoat?.color) return fiberglassBoat.color;
+  } catch (e) {
+    // Fallback if localStorage is not available
+  }
+
+  // Fallback to hardcoded colors
   if (BOAT_COLORS[boat]) return BOAT_COLORS[boat];
+
+  // Generate color from boat name
   let h = 0;
   for (let i = 0; i < boat.length; i++) h = (h * 31 + boat.charCodeAt(i)) % 360;
   return `hsl(${h}, 65%, 50%)`;

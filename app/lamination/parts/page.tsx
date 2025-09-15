@@ -73,10 +73,10 @@ type Boat = {
 };
 
 type UndoAction = {
-  type: 'DELETE_PART' | 'UPDATE_PART' | 'STATUS_CHANGE';
+  type: 'DELETE_PART' | 'UPDATE_PART' | 'STATUS_CHANGE' | 'DELETE_BOAT';
   boatId: string;
-  partId: string;
-  previousState: BoatPart | null;
+  partId?: string;
+  previousState: BoatPart | Boat | null;
   description: string;
 };
 
@@ -230,38 +230,49 @@ export default function FiberglassPartsPage() {
     const lastAction = undoStack[undoStack.length - 1];
     
     setBoats(prev => {
-      const updated = prev.map(boat => {
-        if (boat.id !== lastAction.boatId) return boat;
-        
-        switch (lastAction.type) {
-          case 'DELETE_PART':
-            // Restore deleted part
-            if (lastAction.previousState) {
-              return {
-                ...boat,
-                parts: [...boat.parts, lastAction.previousState]
-              };
+      switch (lastAction.type) {
+        case 'DELETE_BOAT':
+          // Restore deleted boat
+          if (lastAction.previousState) {
+            return [...prev, lastAction.previousState as Boat];
+          }
+          return prev;
+
+        default:
+          // Handle part-level operations
+          const updated = prev.map(boat => {
+            if (boat.id !== lastAction.boatId) return boat;
+
+            switch (lastAction.type) {
+              case 'DELETE_PART':
+                // Restore deleted part
+                if (lastAction.previousState) {
+                  return {
+                    ...boat,
+                    parts: [...boat.parts, lastAction.previousState as BoatPart]
+                  };
+                }
+                return boat;
+
+              case 'UPDATE_PART':
+              case 'STATUS_CHANGE':
+                // Restore previous state of part
+                if (lastAction.previousState && lastAction.partId) {
+                  return {
+                    ...boat,
+                    parts: boat.parts.map(part =>
+                      part.id === lastAction.partId ? lastAction.previousState as BoatPart : part
+                    )
+                  };
+                }
+                return boat;
+
+              default:
+                return boat;
             }
-            return boat;
-            
-          case 'UPDATE_PART':
-          case 'STATUS_CHANGE':
-            // Restore previous state of part
-            if (lastAction.previousState) {
-              return {
-                ...boat,
-                parts: boat.parts.map(part =>
-                  part.id === lastAction.partId ? lastAction.previousState! : part
-                )
-              };
-            }
-            return boat;
-            
-          default:
-            return boat;
-        }
-      });
-      return updated;
+          });
+          return updated;
+      }
     });
     
     // Remove the undone action from stack
@@ -316,28 +327,30 @@ export default function FiberglassPartsPage() {
     setShowNewBoatForm(false);
   };
 
-  const updatePartStatus = (partId: string) => {
-    if (!selectedBoat) return;
-    
-    const currentPart = selectedBoat.parts.find(p => p.id === partId);
+  const updatePartStatus = (partId: string, boatId?: string) => {
+    // Find the boat either from selected or provided boatId
+    const targetBoat = boatId ? boats.find(b => b.id === boatId) : selectedBoat;
+    if (!targetBoat) return;
+
+    const currentPart = targetBoat.parts.find(p => p.id === partId);
     if (!currentPart) return;
-    
+
     // Record undo action
     addToUndoStack({
       type: 'STATUS_CHANGE',
-      boatId: selectedBoat.id,
+      boatId: targetBoat.id,
       partId,
       previousState: { ...currentPart },
-      description: `Changed status of ${currentPart.name}`
+      description: `Changed status of ${currentPart.name} in ${targetBoat.name}`
     });
-    
+
     setBoats(prev => {
-      const updated = prev.map(boat => 
-        boat.id === selectedBoat.id 
+      const updated = prev.map(boat =>
+        boat.id === targetBoat.id
           ? {
               ...boat,
               parts: boat.parts.map(part =>
-                part.id === partId 
+                part.id === partId
                   ? { ...part, status: getNextStatus(part.status) }
                   : part
               )
@@ -407,6 +420,35 @@ export default function FiberglassPartsPage() {
       markUnsaved();
       return updated;
     });
+  };
+
+  // Delete entire boat
+  const deleteBoat = (boatId: string) => {
+    const boatToDelete = boats.find(b => b.id === boatId);
+    if (!boatToDelete) return;
+
+    if (!confirm(`Are you sure you want to delete "${boatToDelete.name}" and all its parts? You can undo this action.`)) {
+      return;
+    }
+
+    // Record undo action
+    addToUndoStack({
+      type: 'DELETE_BOAT',
+      boatId,
+      previousState: { ...boatToDelete },
+      description: `Deleted boat "${boatToDelete.name}"`
+    });
+
+    // Remove the boat from state
+    setBoats(prev => prev.filter(boat => boat.id !== boatId));
+
+    // Clear selected boat if it was deleted
+    if (selectedBoat?.id === boatId) {
+      setSelectedBoat(null);
+      setSelectedBoatId('');
+    }
+
+    markUnsaved();
   };
 
   // Add part to lamination schedule
@@ -938,16 +980,18 @@ export default function FiberglassPartsPage() {
                         <td className="px-4 py-3 text-sm text-gray-600">{part.category}</td>
                         <td className="px-4 py-3 text-sm">{part.qtyNeeded}</td>
                         <td className="px-4 py-3">
-                          <span
-                            className="px-3 py-1 rounded-full text-xs font-semibold border"
-                            style={{ 
+                          <button
+                            onClick={() => updatePartStatus(part.id, boat.id)}
+                            className="px-3 py-1 rounded-full text-xs font-semibold border hover:opacity-80 transition-opacity cursor-pointer"
+                            style={{
                               backgroundColor: statusConfig.bgHex,
                               color: statusConfig.textColor,
-                              borderColor: boat.color 
+                              borderColor: boat.color
                             }}
+                            title="Click to advance status"
                           >
                             {statusConfig.label}
-                          </span>
+                          </button>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{part.gelColor}</td>
                       </tr>
@@ -969,13 +1013,23 @@ export default function FiberglassPartsPage() {
                 <h2 className="text-xl font-semibold">{selectedBoat.name} - {selectedBoat.configuration}</h2>
                 <p className="text-sm text-gray-600">{selectedBoat.parts.length} parts total</p>
               </div>
-              <button
-                onClick={() => setShowAddPartForm(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Add Part
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => deleteBoat(selectedBoat.id)}
+                  className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                  title="Delete this boat and all its parts"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Boat
+                </button>
+                <button
+                  onClick={() => setShowAddPartForm(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Part
+                </button>
+              </div>
             </div>
           </div>
 

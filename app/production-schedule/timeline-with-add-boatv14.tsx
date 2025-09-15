@@ -23,17 +23,59 @@ const getWeekMonday = (isoDate) => {
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().slice(0, 10);
 };
-const colorForBoat = (name) => {
+const colorForBoat = (name, bars = []) => {
+  // First check if boat has a stored custom color
+  const boatBar = bars.find(b => b.boat === name && b.color);
+  if (boatBar?.color) return boatBar.color;
+
+  // Fallback to generated color
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return `hsl(${h % 360} 85% 35%)`;
 };
 
-const colorForBoatBg = (name) => {
+const colorForBoatBg = (name, bars = []) => {
+  // First check if boat has a stored custom color
+  const boatBar = bars.find(b => b.boat === name && b.color);
+  if (boatBar?.color) {
+    // Convert hex to rgba with transparency
+    const hex = boatBar.color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    return `rgba(${r}, ${g}, ${b}, 0.4)`;
+  }
+
+  // Fallback to generated color
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return `hsla(${h % 360}, 85%, 45%, 0.4)`;
 };
+
+// Predefined color palette - lighter, less opaque colors for better distinction
+const COLOR_PALETTE = [
+  '#60a5fa', // Light Blue
+  '#f87171', // Light Red
+  '#4ade80', // Light Green
+  '#fb923c', // Light Orange
+  '#a78bfa', // Light Purple
+  '#22d3ee', // Light Cyan
+  '#f472b6', // Light Rose
+  '#2dd4bf', // Light Teal
+  '#fbbf24', // Light Yellow
+  '#facc15', // Golden Yellow
+  '#fde047', // Sunny Yellow
+  '#fdba74', // Light Amber
+  '#f97316', // Light Chocolate
+  '#e9a23b', // Light Peru
+  '#fed7aa', // Light Sandy Brown
+  '#e5b85c', // Light Tan
+  '#ec4899', // Hot Pink
+  '#84cc16', // Light Lime Green
+  '#fb7185', // Light Coral
+  '#67e8f9', // Light Turquoise
+];
+
 const weekRange = (count, startIso) => {
   const base = startIso ? new Date(startIso) : new Date();
   const wd = base.getUTCDay();
@@ -110,6 +152,8 @@ export default function TimelineWithAddBoat() {
           if (data.bars && data.bars.length > 0) {
             setBars(data.bars);
             hasLoadedRef.current = true;
+            // Also save to localStorage for other dashboards
+            localStorage.setItem('scheduleData', JSON.stringify(data));
           }
         }
       } catch (error) {
@@ -124,13 +168,16 @@ export default function TimelineWithAddBoat() {
   const saveSchedule = async () => {
     setIsSaving(true);
     try {
+      // Save to API
       const response = await fetch('/api/schedule-store', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bars, tasks: [] })
       });
-      
+
       if (response.ok) {
+        // Also save to localStorage for other dashboards to access
+        localStorage.setItem('scheduleData', JSON.stringify({ bars, tasks: [] }));
         console.log('Schedule saved successfully');
       } else {
         console.error('Failed to save schedule');
@@ -184,6 +231,56 @@ export default function TimelineWithAddBoat() {
   
   // 3-dot menu for boats
   const [openMenuId, setOpenMenuId] = React.useState(null);
+  const [colorPickerOpen, setColorPickerOpen] = React.useState(null); // boat name when color picker is open
+
+  // Helper functions for color management
+  const getUsedColors = () => {
+    const usedColors = new Set();
+    bars.forEach(bar => {
+      if (bar.color) usedColors.add(bar.color);
+    });
+    return Array.from(usedColors);
+  };
+
+  const getBoatColor = (boatName) => {
+    const bar = bars.find(b => b.boat === boatName);
+    return bar?.color || null;
+  };
+
+  const getNextAvailableColor = () => {
+    const usedColors = getUsedColors();
+    for (const color of COLOR_PALETTE) {
+      if (!usedColors.includes(color)) {
+        return color;
+      }
+    }
+    // If all colors are used, fall back to first color (shouldn't happen with 12 colors)
+    return COLOR_PALETTE[0];
+  };
+
+  const changeBoatColor = async (boatName, newColor) => {
+    // Update all bars for this boat
+    const boatBars = bars.filter(b => b.boat === boatName);
+    boatBars.forEach(bar => {
+      updateBar(bar.id, { color: newColor });
+    });
+
+    // Also update the fiberglass boats data
+    try {
+      const existingBoats = JSON.parse(localStorage.getItem('fiberglassBoats') || '[]');
+      const updatedBoats = existingBoats.map(boat => {
+        if (boat.name.includes(boatName)) {
+          return { ...boat, color: newColor };
+        }
+        return boat;
+      });
+      localStorage.setItem('fiberglassBoats', JSON.stringify(updatedBoats));
+    } catch (error) {
+      console.error('Failed to update boat color in fiberglass data:', error);
+    }
+
+    setColorPickerOpen(null);
+  };
 
   React.useEffect(() => {
     const onKey = (e) => {
@@ -274,20 +371,21 @@ export default function TimelineWithAddBoat() {
     // Create new boat bars for provider
     const timestamp = Date.now();
     const newBars = [];
-    
+    const newColor = getNextAvailableColor(); // Get an available color for the new boat
+
     if (newBoatModel === '26') {
       newBars.push(
-        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '26', dept: 'LAM', start: newStartIso, duration: 3, boatType: newBoatType },
-        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '26', dept: 'ASM', start: isoAddWeeks(newStartIso, 3), duration: 3, boatType: newBoatType },
-        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '26', dept: 'FIN', start: isoAddWeeks(newStartIso, 6), duration: 3, boatType: newBoatType },
-        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '26', dept: 'RIG', start: isoAddWeeks(newStartIso, 9), duration: 3, boatType: newBoatType }
+        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '26', dept: 'LAM', start: newStartIso, duration: 3, boatType: newBoatType, color: newColor },
+        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '26', dept: 'ASM', start: isoAddWeeks(newStartIso, 3), duration: 3, boatType: newBoatType, color: newColor },
+        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '26', dept: 'FIN', start: isoAddWeeks(newStartIso, 6), duration: 3, boatType: newBoatType, color: newColor },
+        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '26', dept: 'RIG', start: isoAddWeeks(newStartIso, 9), duration: 3, boatType: newBoatType, color: newColor }
       );
     } else {
       newBars.push(
-        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '40', dept: 'LAM', start: newStartIso, duration: 8, boatType: newBoatType },
-        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '40', dept: 'ASM', start: isoAddWeeks(newStartIso, 8), duration: 8, boatType: newBoatType },
-        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '40', dept: 'FIN', start: isoAddWeeks(newStartIso, 16), duration: 8, boatType: newBoatType },
-        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '40', dept: 'RIG', start: isoAddWeeks(newStartIso, 24), duration: 8, boatType: newBoatType }
+        { id: `${newBoatName}-LAM-${timestamp}`, boat: newBoatName, model: '40', dept: 'LAM', start: newStartIso, duration: 8, boatType: newBoatType, color: newColor },
+        { id: `${newBoatName}-ASM-${timestamp}`, boat: newBoatName, model: '40', dept: 'ASM', start: isoAddWeeks(newStartIso, 8), duration: 8, boatType: newBoatType, color: newColor },
+        { id: `${newBoatName}-FIN-${timestamp}`, boat: newBoatName, model: '40', dept: 'FIN', start: isoAddWeeks(newStartIso, 16), duration: 8, boatType: newBoatType, color: newColor },
+        { id: `${newBoatName}-RIG-${timestamp}`, boat: newBoatName, model: '40', dept: 'RIG', start: isoAddWeeks(newStartIso, 24), duration: 8, boatType: newBoatType, color: newColor }
       );
     }
     
@@ -295,7 +393,7 @@ export default function TimelineWithAddBoat() {
     
     // Auto-generate parts based on boat type (for 26ft boats only for now)
     if (newBoatModel === '26') {
-      await generatePartsForBoat(newBoatName, newBoatModel, newBoatType);
+      await generatePartsForBoat(newBoatName, newBoatModel, newBoatType, newColor);
     }
     
     // Reset form
@@ -306,7 +404,7 @@ export default function TimelineWithAddBoat() {
   };
 
   // Function to automatically generate parts for a new boat
-  const generatePartsForBoat = async (boatName, model, boatType) => {
+  const generatePartsForBoat = async (boatName, model, boatType, color) => {
     try {
       // Load master parts catalog
       const catalogResponse = await fetch('/master-parts-catalog.json');
@@ -381,7 +479,7 @@ export default function TimelineWithAddBoat() {
         id: `boat-${Date.now()}`,
         name: `${boatName} ${model}ft`,
         configuration: boatConfig,
-        color: model === '40' ? "#0ea5e9" : "#f97316", // Blue for 40ft, Orange for 26ft
+        color: color || (model === '40' ? "#0ea5e9" : "#f97316"), // Use provided color or default
         parts: boatParts,
         createdDate: new Date().toISOString(),
       };
@@ -538,8 +636,8 @@ export default function TimelineWithAddBoat() {
                       const startIdx = weekIndex.get(r.startIso);
                       if (startIdx == null || startIdx < 0) return null;
                       const span = Math.max(1, Math.min(r.weeks, weeks.length - startIdx));
-                      const boatColor = colorForBoat(r.boat);
-                      const boatBgColor = colorForBoatBg(r.boat);
+                      const boatColor = colorForBoat(r.boat, bars);
+                      const boatBgColor = colorForBoatBg(r.boat, bars);
                       const isDragging = draggingId === r.id;
                       const isSelected = selected && selected.runId === r.id;
                       
@@ -564,14 +662,14 @@ export default function TimelineWithAddBoat() {
                           }}
                           onDragEnd={() => { setDraggingId(null); setDragOverInfo(null); }}
                           className={`absolute flex flex-col justify-start p-2 text-sm font-semibold text-gray-800 rounded border-2 select-none cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-70' : ''} ${isSelected ? 'ring-2 ring-blue-500 shadow-md' : 'shadow-md'}`}
-                          style={{ 
+                          style={{
                             left: `${startIdx * 200}px`,
                             width: `${span * 200}px`,
                             top: `${topOffset}px`,
                             height: `${barHeight}px`,
-                            borderColor: boatColor, 
+                            borderColor: boatColor,
                             backgroundColor: boatBgColor,
-                            zIndex: isSelected ? 200 : (r.model === '26' ? 60 : 30),
+                            zIndex: openMenuId === r.id ? 500 : (isSelected ? 200 : (r.model === '26' ? 60 : 30)),
                             overflow: 'visible'
                           }}
                           title={`${r.boat} — ${r.dept} (${r.weeks}w) - Drag to move`}
@@ -590,7 +688,7 @@ export default function TimelineWithAddBoat() {
                                 ⋯
                               </button>
                               {openMenuId === r.id && (
-                                <div className="absolute right-0 mt-1 w-28 bg-white border border-gray-200 rounded-md shadow-lg z-[1000]">
+                                <div className="absolute right-0 mt-1 w-28 bg-white border border-gray-200 rounded-md shadow-lg z-[9999]">
                                   <button
                                     className="w-full px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
                                     onClick={(e) => {
@@ -624,6 +722,17 @@ export default function TimelineWithAddBoat() {
                                     }}
                                   >
                                     📎 Merge Week
+                                  </button>
+                                  <button
+                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setColorPickerOpen(r.boat);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    🎨 Change Color
                                   </button>
                                 </div>
                               )}
@@ -812,6 +921,52 @@ export default function TimelineWithAddBoat() {
             </div>
             <div>
               <a href={`/tracker?boat=${encodeURIComponent(statusCtx.boat)}&open=1`} className="inline-block mt-1 text-white bg-black px-3 py-1.5 rounded hover:opacity-90">Open Boat</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Color Picker Modal */}
+      {colorPickerOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[2000]">
+          <div className="bg-white rounded-lg p-6 shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Choose Color for {colorPickerOpen}</h3>
+
+            <div className="grid grid-cols-5 gap-3 mb-4">
+              {COLOR_PALETTE.map((color) => {
+                const isUsed = getUsedColors().includes(color) && getBoatColor(colorPickerOpen) !== color;
+                const isCurrent = getBoatColor(colorPickerOpen) === color;
+
+                return (
+                  <button
+                    key={color}
+                    className={`w-12 h-12 rounded-lg border-2 transition-all ${
+                      isCurrent ? 'border-gray-800 scale-110' : 'border-gray-300'
+                    } ${isUsed ? 'opacity-30 cursor-not-allowed' : 'hover:scale-105 hover:border-gray-500'}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => {
+                      if (!isUsed) {
+                        changeBoatColor(colorPickerOpen, color);
+                      }
+                    }}
+                    disabled={isUsed}
+                    title={isUsed ? 'Color already in use' : (isCurrent ? 'Current color' : 'Click to select')}
+                  >
+                    {isCurrent && (
+                      <span className="text-gray-800 text-xl font-bold">✓</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
+                onClick={() => setColorPickerOpen(null)}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

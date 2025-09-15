@@ -144,6 +144,7 @@ export default function LaminationDashboard() {
   // Parts data from lamination schedule
   const [parts, setParts] = useState<Part[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scheduleData, setScheduleData] = useState<any[]>([]);
 
   // Group parts into week sections (matching schedule layout)
   const weekSections = useMemo(() => {
@@ -156,10 +157,7 @@ export default function LaminationDashboard() {
     return Array.from(boats);
   }, [parts]);
 
-  const [alerts, setAlerts] = useState([
-    { id: 1, type: "Quality Issue", text: "Gelcoat bubble on Johnson console", boat: "Johnson" },
-    { id: 2, type: "Delay", text: "Material delivery delayed", boat: "Smoak" }
-  ]);
+  const [alerts, setAlerts] = useState([]);
 
   // Load parts from API
   const loadPartsFromAPI = async () => {
@@ -179,45 +177,157 @@ export default function LaminationDashboard() {
     }
   };
 
+  // Load schedule data from localStorage/API
+  const loadScheduleData = async () => {
+    try {
+      // First try localStorage (updated by production schedule)
+      const localData = localStorage.getItem('scheduleData');
+      if (localData) {
+        const parsedData = JSON.parse(localData);
+        if (parsedData.bars) {
+          // Filter for lamination department only
+          const laminationBars = parsedData.bars.filter(bar => bar.dept === 'LAM');
+          setScheduleData(laminationBars);
+          return;
+        }
+      }
+
+      // Fallback to API
+      const response = await fetch('/api/schedule-store');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.bars) {
+          const laminationBars = data.bars.filter(bar => bar.dept === 'LAM');
+          setScheduleData(laminationBars);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load schedule data:', error);
+    }
+  };
+
   // Load data on mount
   useEffect(() => {
     loadPartsFromAPI();
+    loadScheduleData();
   }, []);
 
-  // Timeline data matching Production Schedule
-  const timelineData = {
-    "LAM 26 Actual": { 
-      boat: "Johnson", 
-      progress: 65, 
-      weeks: 3, 
-      color: "#ef4444",
-      note: "On track, gelcoat complete"
-    },
-    "LAM 40 Actual": { 
-      boat: "40-22", 
-      progress: 40, 
-      weeks: 8, 
-      color: "#f59e0b",
-      note: "Slight delay in materials"
+  // Listen for schedule data changes from production schedule
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'scheduleData') {
+        loadScheduleData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Generate dynamic timeline data from production schedule
+  const generateTimelineData = () => {
+    const now = new Date();
+    const timelineData = {};
+    const scheduledData = {};
+
+    // Sort schedule data by start date
+    const sortedBars = scheduleData.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+    // Separate by model type
+    const model26Bars = sortedBars.filter(bar => bar.model === '26');
+    const model40Bars = sortedBars.filter(bar => bar.model === '40');
+
+    // For 26ft boats - show next 3 boats
+    model26Bars.slice(0, 3).forEach((bar, index) => {
+      const startDate = new Date(bar.start);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + (bar.duration * 7));
+
+      // Calculate progress based on current date
+      let progress = 0;
+      if (now >= startDate) {
+        if (now >= endDate) {
+          progress = 100;
+        } else {
+          const totalDuration = endDate.getTime() - startDate.getTime();
+          const elapsed = now.getTime() - startDate.getTime();
+          progress = Math.round((elapsed / totalDuration) * 100);
+        }
+      }
+
+      const barData = {
+        boat: bar.boat,
+        progress: progress,
+        weeks: bar.duration,
+        color: bar.color || colorForBoat(bar.boat, parts),
+        note: bar.note || `${bar.model}ft boat`,
+        startDate: bar.start,
+        id: bar.id
+      };
+
+      const isCurrentOrStarted = startDate <= now;
+      const key = isCurrentOrStarted ? 'Actual' : 'Scheduled';
+      const timelineKey = index === 0 ? `LAM 26 ${key}` : `LAM 26 ${key} ${index + 1}`;
+
+      if (isCurrentOrStarted) {
+        timelineData[timelineKey] = barData;
+      } else {
+        scheduledData[timelineKey] = barData;
+      }
+    });
+
+    // For 40ft boats - show next boats covering at least 9 weeks
+    let totalWeeks40 = 0;
+    let boatIndex40 = 0;
+
+    while (totalWeeks40 < 9 && boatIndex40 < model40Bars.length) {
+      const bar = model40Bars[boatIndex40];
+      const startDate = new Date(bar.start);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + (bar.duration * 7));
+
+      // Calculate progress based on current date
+      let progress = 0;
+      if (now >= startDate) {
+        if (now >= endDate) {
+          progress = 100;
+        } else {
+          const totalDuration = endDate.getTime() - startDate.getTime();
+          const elapsed = now.getTime() - startDate.getTime();
+          progress = Math.round((elapsed / totalDuration) * 100);
+        }
+      }
+
+      const barData = {
+        boat: bar.boat,
+        progress: progress,
+        weeks: bar.duration,
+        color: bar.color || colorForBoat(bar.boat, parts),
+        note: bar.note || `${bar.model}ft boat`,
+        startDate: bar.start,
+        id: bar.id
+      };
+
+      const isCurrentOrStarted = startDate <= now;
+      const key = isCurrentOrStarted ? 'Actual' : 'Scheduled';
+      const timelineKey = boatIndex40 === 0 ? `LAM 40 ${key}` : `LAM 40 ${key} ${boatIndex40 + 1}`;
+
+      if (isCurrentOrStarted) {
+        timelineData[timelineKey] = barData;
+      } else {
+        scheduledData[timelineKey] = barData;
+      }
+
+      totalWeeks40 += bar.duration;
+      boatIndex40++;
     }
+
+    return { timelineData, scheduledData };
   };
 
-  const scheduledData = {
-    "LAM 26 Scheduled": { 
-      boat: "Smoak", 
-      progress: 0, 
-      weeks: 3, 
-      color: "#06b6d4",
-      note: "Starting next week"
-    },
-    "LAM 40 Scheduled": { 
-      boat: "40-23", 
-      progress: 0, 
-      weeks: 8, 
-      color: "#16a34a",
-      note: "Planned for March"
-    }
-  };
+  const { timelineData, scheduledData } = useMemo(() => {
+    return generateTimelineData();
+  }, [scheduleData, parts]);
 
   function handleCardClick(card) {
     setSelectedCard(card);
@@ -260,25 +370,6 @@ export default function LaminationDashboard() {
     setDragging(null);
   }
 
-  function addAlert() {
-    const newAlert = {
-      id: Date.now(),
-      type: "Other",
-      text: "",
-      boat: ""
-    };
-    setAlerts(prev => [...prev, newAlert]);
-  }
-
-  function updateAlert(id, field, value) {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === id ? { ...alert, [field]: value } : alert
-    ));
-  }
-
-  function deleteAlert(id) {
-    setAlerts(prev => prev.filter(alert => alert.id !== id));
-  }
 
   function updateCard(updatedCard) {
     setParts(prev => prev.map(part => 
@@ -363,6 +454,220 @@ export default function LaminationDashboard() {
             </div>
           )}
         </div>
+      </div>
+    );
+  }
+
+  // Production Timeline Component (copied from production schedule)
+  function ProductionTimeline({ scheduleData }) {
+    // Helper functions from production schedule
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const isoAddWeeks = (iso, w) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      d.setUTCDate(d.getUTCDate() + 7 * w);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const getWeekMonday = (isoDate) => {
+      if (!isoDate) return null;
+      const d = new Date(isoDate);
+      if (isNaN(d.getTime())) return null;
+      const day = d.getUTCDay();
+      const diff = (day === 0 ? -6 : 1) - day;
+      d.setUTCDate(d.getUTCDate() + diff);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const weekRange = (count, startIso) => {
+      const base = startIso ? new Date(startIso) : new Date();
+      const wd = base.getUTCDay();
+      const monday = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() - ((wd + 6) % 7)));
+      const arr = [];
+      for (let i = 0; i < count; i++) {
+        const d = new Date(monday.getTime() + i * ONE_WEEK_MS);
+        arr.push(d.toISOString().slice(0, 10));
+      }
+      return arr;
+    };
+
+    const calculateBarHeight = (bar, weeks) => {
+      const baseHeight = 48;
+      let maxNoteLines = 0;
+
+      const startDate = bar.startIso || bar.start;
+
+      if (bar.weekNotes && startDate) {
+        for (let i = 0; i < weeks; i++) {
+          const weekIso = isoAddWeeks(startDate, i);
+          const weekMonday = getWeekMonday(weekIso);
+          if (weekMonday) {
+            const note = bar.weekNotes[weekMonday];
+            if (note) {
+              const explicitLines = note.split('\n').length;
+              const totalChars = note.length;
+              const wrappedLines = Math.ceil(totalChars / 30);
+              const actualLines = Math.max(explicitLines, wrappedLines);
+              maxNoteLines = Math.max(maxNoteLines, actualLines);
+            }
+          }
+        }
+      }
+
+      return baseHeight + (maxNoteLines * 18);
+    };
+
+    const colorForBoatProd = (name, bars = []) => {
+      const boatBar = bars.find(b => b.boat === name && b.color);
+      if (boatBar?.color) return boatBar.color;
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+      return `hsl(${h % 360} 85% 35%)`;
+    };
+
+    const colorForBoatBgProd = (name, bars = []) => {
+      const boatBar = bars.find(b => b.boat === name && b.color);
+      if (boatBar?.color) {
+        const hex = boatBar.color.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        return `rgba(${r}, ${g}, ${b}, 0.4)`;
+      }
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+      return `hsla(${h % 360}, 85%, 45%, 0.4)`;
+    };
+
+    // Generate 9 weeks from current date
+    const weeks = useMemo(() => weekRange(9), []);
+    const weekIndex = useMemo(() => new Map(weeks.map((w, i) => [w, i])), [weeks]);
+
+    // Filter for lamination department only
+    const laminationBars = scheduleData.filter(bar => bar.dept === 'LAM');
+
+    // Convert bars to runs format for compatibility
+    const runs = useMemo(() => {
+      return laminationBars.map(bar => ({
+        id: bar.id,
+        boat: bar.boat,
+        model: bar.model,
+        dept: 'lamination',
+        startIso: bar.start,
+        weeks: bar.duration,
+        note: bar.note,
+        weekNotes: bar.weekNotes || {}
+      }));
+    }, [laminationBars]);
+
+    const sortRuns = (a, b) => {
+      if (a.model !== b.model) return a.model === '26' ? -1 : 1;
+      if (a.startIso !== b.startIso) return a.startIso < b.startIso ? -1 : 1;
+      return a.id.localeCompare(b.id);
+    };
+
+    // Calculate max height for each model
+    const model26Bars = runs.filter(r => r.model === '26');
+    const maxModel26Height = model26Bars.reduce((max, bar) => {
+      const height = calculateBarHeight(bar, bar.weeks);
+      return Math.max(max, height);
+    }, 48);
+
+    const model40Bars = runs.filter(r => r.model === '40');
+    const maxModel40Height = model40Bars.reduce((max, bar) => {
+      const height = calculateBarHeight(bar, bar.weeks);
+      return Math.max(max, height);
+    }, 48);
+
+    const totalHeight = model40Bars.length > 0
+      ? (12 + maxModel26Height + 20 + maxModel40Height + 20)
+      : (12 + maxModel26Height + 20);
+
+    const maxBarHeight = Math.max(totalHeight, 160);
+
+    return (
+      <div className="overflow-auto max-h-[400px] border border-gray-300">
+        <table className="min-w-[1200px] w-full border-collapse">
+          <thead className="bg-neutral-50">
+            <tr>
+              <th className="sticky left-0 top-0 bg-neutral-50 border border-gray-300 px-2 py-1 text-left w-44" style={{ zIndex: 1000, backgroundColor: 'rgb(250 250 250)' }}>Lamination</th>
+              {weeks.map(w => (
+                <th key={w} className="sticky top-0 border border-gray-300 px-2 py-1 text-center text-xs whitespace-nowrap bg-neutral-50" style={{ minWidth: '200px', zIndex: 999, backgroundColor: 'rgb(250 250 250)' }}>
+                  {new Date(w).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th className="sticky left-0 bg-white border border-gray-300 px-2 py-1 text-left capitalize" style={{ zIndex: 999, backgroundColor: 'white' }}>Lamination</th>
+              <td className="p-0 border" colSpan={weeks.length}>
+                <div className="relative" style={{ minHeight: `${maxBarHeight}px` }}>
+
+                  {/* Week grid background */}
+                  <div className="absolute inset-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${weeks.length}, 200px)` }}>
+                    {weeks.map((w) => (
+                      <div
+                        key={w}
+                        className="border-l first:border-l-0 border-gray-300"
+                        style={{ minHeight: '100%' }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Boats */}
+                  {runs.sort(sortRuns).map((r) => {
+                    const startIdx = weekIndex.get(r.startIso);
+                    if (startIdx == null || startIdx < 0) return null;
+                    const span = Math.max(1, Math.min(r.weeks, weeks.length - startIdx));
+                    const boatColor = colorForBoatProd(r.boat, laminationBars);
+                    const boatBgColor = colorForBoatBgProd(r.boat, laminationBars);
+
+                    const topOffset = r.model === '26' ? 12 : (12 + maxModel26Height + 20);
+                    const barHeight = calculateBarHeight(r, r.weeks);
+
+                    return (
+                      <div
+                        key={r.id}
+                        className="absolute flex flex-col justify-start p-2 text-sm font-semibold text-gray-800 rounded border-2 select-none shadow-md"
+                        style={{
+                          left: `${startIdx * 200}px`,
+                          width: `${span * 200}px`,
+                          top: `${topOffset}px`,
+                          height: `${barHeight}px`,
+                          borderColor: boatColor,
+                          backgroundColor: boatBgColor,
+                          zIndex: r.model === '26' ? 60 : 30,
+                          overflow: 'visible'
+                        }}
+                        title={`${r.boat} — ${r.dept} (${r.weeks}w)`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div className="truncate text-center flex-1">{r.boat} <span className="opacity-60 text-[10px]">({r.model})</span></div>
+                        </div>
+
+                        {/* Notes display */}
+                        <div className="text-xs text-gray-700 mt-1" style={{ display: 'grid', gridTemplateColumns: `repeat(${span}, 200px)`, overflow: 'visible' }}>
+                          {Array.from({ length: span }).map((_, i) => {
+                            const weekIso = isoAddWeeks(r.startIso, i);
+                            const weekMonday = getWeekMonday(weekIso);
+                            const note = weekMonday ? r.weekNotes?.[weekMonday] : null;
+                            return (
+                              <div key={i} className="px-1 border-l first:border-l-0 border-neutral-300/30 text-left overflow-visible" style={{ fontSize: '11px', lineHeight: '14px', wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                {note || ''}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     );
   }
@@ -523,86 +828,21 @@ export default function LaminationDashboard() {
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Alerts & Issues</h2>
-              <button 
-                onClick={addAlert}
-                className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
-              >
-                Add Alert
-              </button>
             </div>
-            
-            <div className="space-y-3 max-h-64 overflow-y-auto">
-              {alerts.map(alert => (
-                <div key={alert.id} className="border border-gray-200 rounded-lg p-3 bg-red-50">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1">
-                      <select 
-                        value={alert.type}
-                        onChange={(e) => updateAlert(alert.id, 'type', e.target.value)}
-                        className="text-sm border rounded px-2 py-1 mb-2 w-full"
-                      >
-                        {ALERT_TYPES.map(type => (
-                          <option key={type} value={type}>{type}</option>
-                        ))}
-                      </select>
-                      
-                      <select
-                        value={alert.boat}
-                        onChange={(e) => updateAlert(alert.id, 'boat', e.target.value)}
-                        className="text-sm border rounded px-2 py-1 mb-2 w-full"
-                      >
-                        <option value="">Select boat...</option>
-                        {boatList.map(boat => (
-                          <option key={boat} value={boat}>{boat}</option>
-                        ))}
-                      </select>
-                      
-                      <textarea
-                        value={alert.text}
-                        onChange={(e) => updateAlert(alert.id, 'text', e.target.value)}
-                        placeholder="Issue description..."
-                        className="text-sm border rounded px-2 py-1 w-full resize-none"
-                        rows={2}
-                      />
-                    </div>
-                    
-                    <button
-                      onClick={() => deleteAlert(alert.id)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
+
+            <div className="text-center text-gray-500 py-8">
+              <p>No alerts at this time</p>
             </div>
           </div>
 
-          {/* Timeline Snippet */}
+          {/* Production Schedule Timeline - Lamination Only */}
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Timeline</h2>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={showScheduled}
-                  onChange={(e) => setShowScheduled(e.target.checked)}
-                />
-                Show Scheduled
-              </label>
+              <h2 className="text-xl font-semibold">Lamination Timeline (Read-Only)</h2>
+              <div className="text-sm text-gray-500">9 weeks view from Production Schedule</div>
             </div>
-            
-            <div className="overflow-x-auto">
-              <div className="space-y-1 min-w-max">
-                {Object.entries(timelineData).map(([lane, data]) => (
-                  <TimelineBar key={lane} label={lane} data={data} />
-                ))}
-                
-                {showScheduled && Object.entries(scheduledData).map(([lane, data]) => (
-                  <TimelineBar key={lane} label={lane} data={data} isScheduled={true} />
-                ))}
-              </div>
-            </div>
+
+            <ProductionTimeline scheduleData={scheduleData} />
           </div>
         </div>
       </div>

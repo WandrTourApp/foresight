@@ -24,6 +24,7 @@ export type ScheduleBar = {
   duration: number; // in weeks
   note?: string;
   weekNotes?: Record<string, string>; // weekIso -> note content
+  color?: string; // Hex color for the boat
 };
 
 type State = {

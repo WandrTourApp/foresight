@@ -7,12 +7,12 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/timeline-v2');
+    router.replace('/production-schedule');
   }, [router]);
 
   return (
     <main className="flex items-center justify-center min-h-96">
-      <p>Redirecting to Timeline...</p>
+      <p>Redirecting to Production Schedule...</p>
     </main>
   );
 }
